@@ -13,7 +13,7 @@ from src.db import (
     update_item_translation, get_items_without_embeddings,
     get_items_without_sentiment, update_item_sentiment,
 )
-from src.ingestion import gdelt, rss_feeds, brand_sites, youtube, webhose, reddit, twitter
+from src.ingestion import gdelt, rss_feeds, brand_sites, youtube, webhose, reddit, twitter, bluesky, grok_search
 from src.processing.normalizer import normalize_item
 from src.processing.language import process_language
 from src.processing.embeddings import embed_batch, to_bytes, item_text
@@ -26,17 +26,46 @@ from src.output.brief import generate_brief
 from src.db import insert_event
 
 
+def _fetch_simple(fetch_fn, name: str, min_results: int = 3) -> tuple[str, list[dict]]:
+    """
+    Call a social adapter that accepts simple=bool.
+    If the full query returns fewer than min_results, retries with simple=True.
+    Returns (name, items).
+    """
+    items = fetch_fn(simple=False)
+    if len(items) < min_results:
+        print(f"[Pipeline] {name}: only {len(items)} results, retrying with simple queries")
+        items = fetch_fn(simple=True)
+    return name, items
+
+
 def ingest() -> int:
     """Pull raw articles from all sources and store in DB."""
-    all_raw = []
-    all_raw.extend(gdelt.fetch_all())
-    all_raw.extend(rss_feeds.fetch_all())
-    all_raw.extend(brand_sites.fetch_all())
-    all_raw.extend(youtube.fetch_all())
-    all_raw.extend(webhose.fetch_all())
-    # Social listening sources
-    all_raw.extend(reddit.fetch_all())
-    all_raw.extend(twitter.fetch_all())
+    source_counts: dict[str, int] = {}
+    all_raw: list[dict] = []
+
+    # News and media sources (no query planning needed)
+    for name, fn in [
+        ("GDELT", gdelt.fetch_all),
+        ("RSS", rss_feeds.fetch_all),
+        ("Brand Sites", brand_sites.fetch_all),
+        ("YouTube", youtube.fetch_all),
+        ("Webhose", webhose.fetch_all),
+        ("Twitter/X (ntscraper)", twitter.fetch_all),
+    ]:
+        items = fn()
+        source_counts[name] = len(items)
+        all_raw.extend(items)
+
+    # Social sources with query planning + retry
+    for name, fn in [
+        ("Reddit", reddit.fetch_all),
+        ("Bluesky", bluesky.fetch_all),
+        ("X via Grok", grok_search.fetch_all),
+    ]:
+        _, items = _fetch_simple(fn, name)
+        source_counts[name] = len(items)
+        all_raw.extend(items)
 
     new_count = 0
     for raw_item in all_raw:
@@ -50,7 +79,14 @@ def ingest() -> int:
         insert_item(processed)
         new_count += 1
 
-    print(f"[Pipeline] Ingested {new_count} new items")
+    # Per-source summary
+    print("\n[Pipeline] Source summary:")
+    col_w = max(len(n) for n in source_counts) + 2
+    for name, count in source_counts.items():
+        status = "(unavailable)" if count == 0 else ""
+        print(f"  {name:<{col_w}} {count:>4} items  {status}")
+    print(f"  {'─' * (col_w + 14)}")
+    print(f"  {'Total new:':<{col_w}} {new_count:>4} items")
     return new_count
 
 

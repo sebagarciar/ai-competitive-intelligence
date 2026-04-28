@@ -8,10 +8,13 @@ Monitors Chanel, Dior, and Gucci across public sources and produces structured c
 # 1. Install dependencies (Python 3.10+)
 pip install -r requirements.txt
 
-# 2. Run the full pipeline (ingest → process → analyze → brief)
+# 2. Copy and configure API keys (all optional)
+cp .env.example .env
+
+# 3. Run the full pipeline (ingest → process → analyze → brief)
 python -m src.pipeline
 
-# 3. Launch the Streamlit dashboard
+# 4. Launch the Streamlit dashboard
 streamlit run dashboard/app.py
 ```
 
@@ -42,9 +45,16 @@ This workflow demonstrates the full system in under 2 minutes.
 │   ├── db.py                    # SQLite schema + CRUD
 │   ├── pipeline.py              # End-to-end orchestrator
 │   ├── ingestion/
+│   │   ├── query_planner.py     # Multi-query generation per brand
 │   │   ├── gdelt.py             # GDELT DOC 2.0 API
 │   │   ├── rss_feeds.py         # Vogue Business, BoF, WWD, FT
-│   │   └── brand_sites.py       # Official brand news pages
+│   │   ├── brand_sites.py       # Official brand news pages
+│   │   ├── youtube.py           # YouTube channel + keyword search
+│   │   ├── webhose.py           # Webhose.io news API
+│   │   ├── reddit.py            # Reddit PRAW + keyword search
+│   │   ├── bluesky.py           # Bluesky public API (no auth)
+│   │   ├── grok_search.py       # X posts via xAI Grok live search
+│   │   └── twitter.py           # Twitter/X scraper (legacy, disabled)
 │   ├── processing/
 │   │   ├── normalizer.py        # Text cleaning
 │   │   ├── language.py          # Language detect + ES→EN translation
@@ -68,18 +78,34 @@ This workflow demonstrates the full system in under 2 minutes.
 
 ## Data Sources
 
-| Source | Type | Notes |
-|---|---|---|
-| GDELT DOC 2.0 | News aggregator | Free API, no key needed, 30-day window |
-| Vogue Business RSS | Fashion media | Brand-filtered |
-| Business of Fashion RSS | Fashion media | Brand-filtered |
-| WWD RSS | Fashion media | Brand-filtered |
-| Financial Times RSS | Financial media | Luxury section |
-| Chanel / Dior / Gucci official sites | Brand-owned | `official_source = True` |
+| Source | Type | Auth | Notes |
+|---|---|---|---|
+| GDELT DOC 2.0 | News aggregator | None | Free, 30-day window |
+| Vogue Business / BoF / WWD / FT RSS | Fashion media | None | Brand-filtered |
+| Chanel / Dior / Gucci official sites | Brand-owned | None | `official_source = True` |
+| YouTube | Video | `YOUTUBE_API_KEY` | Channel + keyword search |
+| Webhose.io | News API | `WEBHOSE_API_KEY` | Social share metrics |
+| Reddit | Social media | `REDDIT_CLIENT_ID/SECRET` | Subreddit browse + keyword search |
+| Bluesky | Social media | None | Public AT Protocol API, no key needed |
+| X via Grok | Social media | `XAI_API_KEY` | Grok live X search, optional |
+
+The pipeline degrades gracefully — missing API keys skip that source and continue. After each run it prints a per-source summary showing item counts and which sources were unavailable. Social adapters (Reddit, Bluesky, Grok) automatically retry with simplified queries if initial results are sparse.
+
+## Social Listening — Query Planning
+
+Social adapters use a **query planner** (`src/ingestion/query_planner.py`) that generates multiple search variants per brand instead of just the brand name:
+
+```
+Chanel → "Chanel", "Chanel review", "Chanel pricing",
+          "Chanel collection", "Chanel quality",
+          "Chanel alternatives", "Chanel vs Dior", "Chanel vs Gucci"
+```
+
+This improves coverage across consumer opinions, competitive comparisons, and product-specific discussions.
 
 ## Pipeline Steps
 
-1. **Ingest** — pull articles from all sources, skip known URLs
+1. **Ingest** — pull from all sources; social sources use multi-query planning with retry on thin results
 2. **Normalize** — clean HTML, standardize dates
 3. **Language** — detect language, translate ES→EN via Google Translate (free tier)
 4. **Embed** — compute sentence embeddings with `all-MiniLM-L6-v2` (local model)

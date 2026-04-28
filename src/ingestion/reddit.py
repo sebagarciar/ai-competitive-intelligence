@@ -1,12 +1,14 @@
 """
 Reddit social listening connector using PRAW (official Reddit API).
 Monitors fashion subreddits for brand mentions and consumer sentiment.
+Also searches Reddit by keyword queries from the query planner.
 Docs: https://praw.readthedocs.io/
 """
 import os
 import praw
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
+from src.ingestion.query_planner import BRANDS, build_queries
 
 load_dotenv()
 
@@ -39,6 +41,7 @@ BRAND_KEYWORDS = {
 LOOKBACK_DAYS = 7  # How far back to search
 MIN_UPVOTES = 5  # Filter low-engagement posts
 MAX_POSTS_PER_SUBREDDIT = 50  # API quota management
+MAX_SEARCH_RESULTS = 25  # Per keyword query via Reddit search
 
 
 def _detect_brand(text: str) -> str | None:
@@ -152,9 +155,63 @@ def _fetch_comments_from_post(post, brand: str, max_comments: int = 10) -> list[
         return []
 
 
-def fetch_all() -> list[dict]:
+def _search_reddit_by_queries(reddit, queries: list[str]) -> list[dict]:
     """
-    Fetch posts and comments from fashion subreddits mentioning luxury brands.
+    Search reddit.subreddit("all") for each query string.
+    Complements subreddit browsing with keyword-driven discovery.
+    """
+    items = []
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+
+    for query in queries:
+        try:
+            results = reddit.subreddit("all").search(
+                query,
+                sort="new",
+                time_filter="week",
+                limit=MAX_SEARCH_RESULTS,
+            )
+            for post in results:
+                if post.score < MIN_UPVOTES:
+                    continue
+                created_utc = datetime.fromtimestamp(post.created_utc, tz=timezone.utc)
+                if created_utc < cutoff_date:
+                    continue
+                text = f"{post.title} {post.selftext}"
+                brand = _detect_brand(text)
+                if not brand:
+                    continue
+                engagement_prefix = (
+                    f"[Upvotes: {post.score}, Comments: {post.num_comments}, "
+                    f"Upvote Ratio: {post.upvote_ratio:.0%}] "
+                )
+                items.append({
+                    "competitor": brand,
+                    "source_type": "social_media",
+                    "source_name": f"Reddit - r/{post.subreddit.display_name}",
+                    "source_url": f"https://reddit.com{post.permalink}",
+                    "published_at": created_utc.isoformat(),
+                    "title": post.title,
+                    "excerpt": engagement_prefix + (post.selftext[:500] if post.selftext else post.title),
+                    "raw_text": f"{post.title}\n\n{post.selftext[:2000]}",
+                    "original_language": "en",
+                    "official_source": False,
+                    "engagement_metrics": {
+                        "upvotes": post.score,
+                        "comments": post.num_comments,
+                        "upvote_ratio": post.upvote_ratio,
+                    },
+                })
+        except Exception as e:
+            print(f"[Reddit] Search error for '{query}': {e}")
+
+    return items
+
+
+def fetch_all(simple: bool = False) -> list[dict]:
+    """
+    Fetch posts from fashion subreddits and via keyword search for luxury brands.
+    simple=True uses only brand name queries (retry fallback).
     Returns empty list if Reddit API credentials not configured.
     """
     if not CLIENT_ID or not CLIENT_SECRET:
@@ -178,17 +235,33 @@ def fetch_all() -> list[dict]:
         return []
 
     all_items = []
+    seen_urls: set[str] = set()
 
+    # Subreddit browsing (existing approach)
     for subreddit_name in FASHION_SUBREDDITS:
         posts = _fetch_subreddit_posts(reddit, subreddit_name)
         print(f"[Reddit] r/{subreddit_name}: {len(posts)} posts")
-        all_items.extend(posts)
+        for item in posts:
+            url = item.get("source_url", "")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                all_items.append(item)
 
-        # Optional: Fetch top comments from highly engaged posts
-        # (Disabled by default to reduce data volume)
-        # for post in posts[:3]:  # Top 3 posts per subreddit
-        #     comments = _fetch_comments_from_post(post, brand)
-        #     all_items.extend(comments)
+    # Keyword search across all of Reddit using query planner
+    mode = "simple" if simple else "full"
+    all_queries: list[str] = []
+    for brand in BRANDS:
+        all_queries.extend(build_queries(brand, mode=mode))
+
+    search_items = _search_reddit_by_queries(reddit, all_queries)
+    search_new = 0
+    for item in search_items:
+        url = item.get("source_url", "")
+        if url not in seen_urls:
+            seen_urls.add(url)
+            all_items.append(item)
+            search_new += 1
+    print(f"[Reddit] Keyword search: {search_new} additional posts")
 
     print(f"[Reddit] Total: {len(all_items)} items")
     return all_items
