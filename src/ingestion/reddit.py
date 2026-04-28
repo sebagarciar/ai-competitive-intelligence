@@ -53,7 +53,7 @@ def _detect_brand(text: str) -> str | None:
     return None
 
 
-def _fetch_subreddit_posts(reddit, subreddit_name: str) -> list[dict]:
+def _fetch_subreddit_posts(reddit: praw.Reddit, subreddit_name: str) -> list[dict]:
     """Fetch recent posts from a subreddit that mention luxury brands."""
     try:
         subreddit = reddit.subreddit(subreddit_name)

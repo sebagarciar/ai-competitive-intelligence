@@ -28,7 +28,7 @@ SYSTEM_PROMPT = (
 )
 
 USER_PROMPT_TEMPLATE = (
-    "Search X for recent posts from the last 7 days about {brand} luxury fashion. "
+    "Search X for recent posts from the last {LOOKBACK_DAYS} days about {brand} luxury fashion. "
     "Focus on consumer opinions, reviews, complaints, and reactions. "
     "Return up to 20 results as a JSON array. "
     "Queries to use: {queries}"

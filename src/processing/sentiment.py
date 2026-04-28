@@ -3,6 +3,7 @@ Sentiment analysis using local transformer models (no paid APIs).
 Uses cardiffnlp/twitter-roberta-base-sentiment-latest for social media text.
 Model optimized for tweets but works well for all short-form social content.
 """
+from typing import Any
 from transformers import pipeline
 from functools import lru_cache
 
@@ -11,7 +12,7 @@ _sentiment_pipeline = None
 
 
 @lru_cache(maxsize=1)
-def _load_sentiment_model():
+def _load_sentiment_model() -> Any:
     """Load sentiment model once and cache it (lazy singleton pattern)."""
     print("[Sentiment] Loading cardiffnlp/twitter-roberta-base-sentiment-latest...")
     return pipeline(
@@ -22,7 +23,7 @@ def _load_sentiment_model():
     )
 
 
-def get_sentiment_pipeline():
+def get_sentiment_pipeline() -> Any:
     """Get or create the global sentiment pipeline."""
     global _sentiment_pipeline
     if _sentiment_pipeline is None:

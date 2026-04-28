@@ -89,12 +89,13 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
             CREATE INDEX IF NOT EXISTS idx_trends_score ON trends(trend_score DESC);
         """)
-        # Migrate pre-sentiment schema — safe to run on new DBs too (IF NOT EXISTS equivalent)
+        # Migrate pre-sentiment / pre-embedding-version schema — safe on new DBs too
         existing = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
         for col, typedef in [
             ("sentiment_label", "TEXT"),
             ("sentiment_score", "REAL"),
             ("sentiment_confidence", "REAL"),
+            ("embedding_model", "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
@@ -138,9 +139,22 @@ def insert_item(item: dict) -> str:
     return item_id
 
 
-def update_item_embedding(item_id: str, embedding_bytes: bytes) -> None:
+def update_item_embedding(item_id: str, embedding_bytes: bytes, model_name: str = "") -> None:
     with db() as conn:
-        conn.execute("UPDATE items SET embedding = ? WHERE item_id = ?", (embedding_bytes, item_id))
+        conn.execute(
+            "UPDATE items SET embedding = ?, embedding_model = ? WHERE item_id = ?",
+            (embedding_bytes, model_name, item_id),
+        )
+
+
+def get_items_with_stale_embeddings(current_model: str) -> list[dict]:
+    """Return items whose embedding was computed with a different (or unknown) model."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT item_id, title, excerpt FROM items WHERE embedding IS NOT NULL AND (embedding_model IS NULL OR embedding_model != ?)",
+            (current_model,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def update_item_translation(item_id: str, translated_text: str, original_language: str) -> None:

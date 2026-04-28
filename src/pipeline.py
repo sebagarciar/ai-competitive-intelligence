@@ -7,6 +7,7 @@ Usage:
 """
 import argparse
 import uuid
+from typing import Callable
 import numpy as np
 from src.db import (
     init_db, url_exists, insert_item, update_item_embedding,
@@ -16,7 +17,7 @@ from src.db import (
 from src.ingestion import gdelt, rss_feeds, brand_sites, youtube, webhose, reddit, twitter, bluesky, grok_search
 from src.processing.normalizer import normalize_item
 from src.processing.language import process_language
-from src.processing.embeddings import embed_batch, to_bytes, item_text
+from src.processing.embeddings import embed_batch, to_bytes, item_text, MODEL_NAME as EMBEDDING_MODEL
 from src.processing.dedup import assign_duplicate_groups
 from src.processing.extractor import extract_event
 from src.processing.sentiment import analyze_batch
@@ -26,7 +27,7 @@ from src.output.brief import generate_brief
 from src.db import insert_event
 
 
-def _fetch_simple(fetch_fn, name: str, min_results: int = 3) -> tuple[str, list[dict]]:
+def _fetch_simple(fetch_fn: Callable[..., list[dict]], name: str, min_results: int = 3) -> tuple[str, list[dict]]:
     """
     Call a social adapter that accepts simple=bool.
     If the full query returns fewer than min_results, retries with simple=True.
@@ -101,7 +102,7 @@ def embed() -> None:
     embeddings: np.ndarray = embed_batch(texts)
 
     for item, emb in zip(pending, embeddings):
-        update_item_embedding(item["item_id"], to_bytes(emb))
+        update_item_embedding(item["item_id"], to_bytes(emb), EMBEDDING_MODEL)
 
     print(f"[Pipeline] Embedded {len(pending)} items")
 
