@@ -58,7 +58,7 @@ Critical: The DB uses foreign keys (`PRAGMA foreign_keys=ON`). Events reference 
 - **YouTube** — Official channels + keyword search (`YOUTUBE_API_KEY`)
 - **Webhose.io** — News API with social share metrics (`WEBHOSE_API_KEY`)
 - **Reddit** — PRAW subreddit browsing + keyword search via `reddit.subreddit("all").search()` (`REDDIT_CLIENT_ID/SECRET`)
-- **Bluesky** — Public AT Protocol search API, no auth required (`src/ingestion/bluesky.py`)
+- **Bluesky** — AT Protocol search API; requires `BSKY_IDENTIFIER` and `BSKY_APP_PASSWORD` (`src/ingestion/bluesky.py`)
 - **X via Grok** — xAI Grok live X search; requires `XAI_API_KEY`; gracefully skipped if absent (`src/ingestion/grok_search.py`)
 
 ### Social Listening Architecture
@@ -80,15 +80,17 @@ The dashboard caches data queries with TTL=300s. "Run Pipeline Now" button trigg
 ## Development Notes
 
 - **No paid LLM APIs**: All ML uses local models (sentence-transformers, transformers). Translation uses free Google Translate tier. Optional paid sources (Webhose, xAI) are gracefully skipped when keys are absent.
-- **Embedding model**: `all-MiniLM-L6-v2` loaded lazily on first use via global singleton in `src/processing/embeddings.py`.
+- **Embedding model**: `all-MiniLM-L6-v2` loaded lazily on first use via global singleton in `src/processing/embeddings.py`. Model name is stored alongside each embedding BLOB (`embedding_model` column); use `get_items_with_stale_embeddings(current_model)` to detect rows that need re-embedding after a model swap.
 - **Deduplication**: URL exact-match happens during ingestion; semantic dedup at 0.92 cosine threshold happens post-embedding.
-- **Trend detection thresholds**: `TREND_SCORE_THRESHOLD = 1.0`, `MIN_UNIQUE_SOURCES = 2`, `CRITICAL_IMPACT_THRESHOLD = 4.0` (configurable in `src/analysis/trends.py`).
+- **Tuning constants**: All ML/analysis thresholds live in `src/config.py` and can be overridden via environment variables (e.g. `DBSCAN_EPS=0.3 python -m src.pipeline`). Current defaults: `TREND_SCORE_THRESHOLD=0.3`, `MIN_UNIQUE_SOURCES=1`, `CRITICAL_IMPACT_THRESHOLD=3.5`, `SEMANTIC_SIMILARITY_THRESHOLD=0.92`, `DBSCAN_EPS=0.25`.
 - **Pipeline can run incrementally**: Use `--skip-ingest` to reprocess existing data. Each stage checks for missing data (e.g., `get_items_without_embeddings()`) to avoid redundant work.
 - **Brand colors** (used in dashboard): Chanel `#1a1a1a`, Dior `#b5936c`, Gucci `#5a7a4e`.
 - **Grok/xAI HTTP client**: `grok_search.py` uses `httpx` (not `requests`) for the xAI API call. If `httpx` is not installed, the adapter skips gracefully with a warning.
 
 ## Evaluation Metrics
-Defined in `notebooks/evaluation.ipynb`:
-- **Precision@10** — Relevance of top 10 items
-- **Event F1 Score** — Classification accuracy on 20 labeled events
-- **Trend Precision@5** — Accuracy of top 5 detected trends
+Metric functions live in `src/evaluation.py` (importable, testable):
+- `precision_at_k(labels, k=10)` — fraction of top-k items judged relevant
+- `event_f1(y_true, y_pred)` — returns `{macro, weighted, report}` dict using sklearn
+- `trend_precision_at_k(labels, k=5)` — fraction of top-k trends judged valid
+
+`notebooks/evaluation.ipynb` imports from `src.evaluation` and provides the manual labeling workflow.

@@ -6,10 +6,7 @@ from collections import Counter
 from sklearn.cluster import DBSCAN
 from src.db import get_all_items_with_embeddings, update_event_cluster, get_connection
 from src.processing.embeddings import from_bytes
-
-
-EPS = 0.25           # cosine distance threshold (1 - similarity)
-MIN_SAMPLES = 2      # minimum articles per cluster
+from src.config import DBSCAN_EPS as EPS, DBSCAN_MIN_SAMPLES as MIN_SAMPLES
 
 
 def _top_keywords(texts: list[str], n: int = 3) -> str:

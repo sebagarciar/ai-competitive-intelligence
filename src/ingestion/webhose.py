@@ -113,6 +113,7 @@ def fetch_brand(brand: str) -> list[dict]:
         try:
             published_at = datetime.fromisoformat(published_raw.replace("Z", "+00:00")).isoformat()
         except Exception:
+            print(f"[Webhose] Unparseable date {published_raw!r} — setting published_at=None")
             published_at = None
 
         items.append({

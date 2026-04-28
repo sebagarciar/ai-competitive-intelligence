@@ -75,6 +75,7 @@ def _parse_post(post: dict, brand: str) -> dict | None:
         try:
             published = datetime.fromisoformat(indexed_at.replace("Z", "+00:00"))
         except Exception:
+            print(f"[Bluesky] Skipping post — unparseable date: {indexed_at!r}")
             return None
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
@@ -115,7 +116,8 @@ def _parse_post(post: dict, brand: str) -> dict | None:
                 "replies": reply_count,
             },
         }
-    except Exception:
+    except Exception as e:
+        print(f"[Bluesky] Skipping malformed post: {e}")
         return None
 
 

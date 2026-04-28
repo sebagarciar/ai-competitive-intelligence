@@ -9,6 +9,7 @@ Two-step approach:
 import re
 from functools import lru_cache
 from typing import Optional
+from src.config import KEYWORD_CONFIDENCE_THRESHOLD
 
 # ---------------------------------------------------------------------------
 # Event taxonomy
@@ -77,7 +78,6 @@ SOURCE_PRESTIGE_SCORES: dict[str, int] = {
     "GDELT": 2,
 }
 
-KEYWORD_CONFIDENCE_THRESHOLD = 0.35
 ZS_MODEL_NAME = "cross-encoder/nli-MiniLM2-L6-H768"  # lighter than bart-large-mnli
 
 

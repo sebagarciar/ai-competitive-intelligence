@@ -135,6 +135,7 @@ def _parse_post(post: dict, brand: str) -> dict | None:
         try:
             published = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         except Exception:
+            print(f"[Grok] Unparseable date {date_str!r} — defaulting to now")
             published = datetime.now(timezone.utc)
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
@@ -159,7 +160,8 @@ def _parse_post(post: dict, brand: str) -> dict | None:
                 "retweets": retweets,
             },
         }
-    except Exception:
+    except Exception as e:
+        print(f"[Grok] Skipping malformed post: {e}")
         return None
 
 

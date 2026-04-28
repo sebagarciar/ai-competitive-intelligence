@@ -5,10 +5,14 @@ import math
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from src.db import get_events_for_trends, insert_trend, clear_trends
-
-TREND_SCORE_THRESHOLD = 0.3  # Lowered from 1.0 for testing with limited data
-MIN_UNIQUE_SOURCES = 1  # Lowered from 2 to allow single-source trends
-CRITICAL_IMPACT_THRESHOLD = 3.5  # Lowered from 4.0 to match current data
+from src.config import (
+    TREND_SCORE_THRESHOLD,
+    MIN_UNIQUE_SOURCES,
+    CRITICAL_IMPACT_THRESHOLD,
+    TREND_WEIGHT_BURST,
+    TREND_WEIGHT_SOURCES,
+    TREND_WEIGHT_IMPACT,
+)
 
 
 def _parse_dt(iso: str | None) -> datetime | None:
@@ -79,9 +83,9 @@ def detect_trends() -> list[dict]:
 
         burst_z = (count_7d - mean_prev_28d) / (std_prev_28d + 1)
         trend_score = (
-            0.5 * burst_z
-            + 0.3 * math.log(1 + unique_sources)
-            + 0.2 * (avg_impact / 5)
+            TREND_WEIGHT_BURST * burst_z
+            + TREND_WEIGHT_SOURCES * math.log(1 + unique_sources)
+            + TREND_WEIGHT_IMPACT * (avg_impact / 5)
         )
 
         has_official = any(ev.get("official_source") for ev in group)

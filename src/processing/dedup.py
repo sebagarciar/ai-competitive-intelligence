@@ -7,9 +7,7 @@ import uuid
 import numpy as np
 from src.db import get_all_items_with_embeddings
 from src.processing.embeddings import from_bytes
-
-
-SEMANTIC_THRESHOLD = 0.92
+from src.config import SEMANTIC_SIMILARITY_THRESHOLD as SEMANTIC_THRESHOLD
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
