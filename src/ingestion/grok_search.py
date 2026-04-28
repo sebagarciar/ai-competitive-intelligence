@@ -15,7 +15,10 @@ load_dotenv()
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_BASE_URL = "https://api.x.ai/v1"
-MODEL = "grok-2-1212"
+# Model IDs change; verify current names at console.x.ai/docs/models
+# Budget option: grok-4-1-fast ($0.20/M in, $0.50/M out)
+# Quality option: grok-4-20 ($2.00/M in, $6.00/M out)
+MODEL = os.getenv("XAI_MODEL", "grok-4-1-fast")
 LOOKBACK_DAYS = 7
 
 SYSTEM_PROMPT = (
