@@ -1,6 +1,6 @@
 """
 Grok/xAI adapter for live X (Twitter) data.
-Uses the xAI API (OpenAI-compatible) with Grok's built-in X search capability.
+Uses the xAI Responses API with the x_search tool for real-time X posts.
 Requires XAI_API_KEY in environment. Skips gracefully if not set.
 Sign up: https://console.x.ai
 """
@@ -15,10 +15,8 @@ load_dotenv()
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_BASE_URL = "https://api.x.ai/v1"
-# Model IDs change; verify current names at console.x.ai/docs/models
-# Budget option: grok-4-1-fast ($0.20/M in, $0.50/M out)
-# Quality option: grok-4-20 ($2.00/M in, $6.00/M out)
-MODEL = os.getenv("XAI_MODEL", "grok-4-1-fast")
+# grok-4.20-0309-reasoning supports the x_search tool for live X data
+MODEL = os.getenv("XAI_MODEL", "grok-4.20-0309-reasoning")
 LOOKBACK_DAYS = 7
 
 SYSTEM_PROMPT = (
@@ -52,9 +50,12 @@ def _detect_brand(text: str) -> str | None:
 
 
 def _call_grok(brand: str, queries: list[str]) -> list[dict]:
-    """Call the xAI Grok API and return parsed X posts."""
+    """Call the xAI Responses API with x_search tool and return parsed X posts."""
     try:
         import httpx
+
+        today = datetime.now(timezone.utc)
+        week_ago = today - timedelta(days=LOOKBACK_DAYS)
 
         prompt = USER_PROMPT_TEMPLATE.format(
             brand=brand,
@@ -63,16 +64,22 @@ def _call_grok(brand: str, queries: list[str]) -> list[dict]:
 
         payload = {
             "model": MODEL,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
+            "instructions": SYSTEM_PROMPT,
+            "input": prompt,
+            "tools": [
+                {
+                    "type": "x_search",
+                    "x_search": {
+                        "from_date": week_ago.strftime("%Y-%m-%d"),
+                        "to_date": today.strftime("%Y-%m-%d"),
+                    },
+                }
             ],
-            "temperature": 0,
         }
 
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=60) as client:
             resp = client.post(
-                f"{XAI_BASE_URL}/chat/completions",
+                f"{XAI_BASE_URL}/responses",
                 headers={
                     "Authorization": f"Bearer {XAI_API_KEY}",
                     "Content-Type": "application/json",
@@ -81,7 +88,22 @@ def _call_grok(brand: str, queries: list[str]) -> list[dict]:
             )
             resp.raise_for_status()
 
-        content = resp.json()["choices"][0]["message"]["content"].strip()
+        data = resp.json()
+
+        # Extract the final message text from the output array
+        content = ""
+        for item in data.get("output", []):
+            if item.get("type") == "message":
+                for block in item.get("content", []):
+                    if block.get("type") == "output_text":
+                        content = block.get("text", "").strip()
+                        break
+                if content:
+                    break
+
+        if not content:
+            print(f"[Grok] Empty response for {brand}")
+            return []
 
         # Strip any accidental markdown fences
         content = re.sub(r"^```(?:json)?\s*", "", content)
@@ -152,7 +174,6 @@ def fetch_all(simple: bool = False) -> list[dict]:
         print("[Grok] XAI_API_KEY not configured — skipping X search via Grok")
         return []
 
-    # httpx is the HTTP client used here; check it's available
     try:
         import httpx  # noqa: F401
     except ImportError:

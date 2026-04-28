@@ -21,20 +21,18 @@ scraper = cloudscraper.create_scraper(
 BRAND_PAGES = [
     {
         "brand": "Chanel",
-        "url": "https://www.chanel.com/us/news/",
+        "url": "https://www.chanel.com/us/fashion/",
         "source_name": "Chanel Official",
     },
     {
         "brand": "Dior",
-        "url": "https://www.lvmh.com/news-documents/news/",
-        "source_name": "Dior Official (LVMH)",
-        "filter_brand": True,  # Filter for Dior-specific content
+        "url": "https://www.dior.com/en_us/fashion/news-and-events",
+        "source_name": "Dior Official",
     },
     {
         "brand": "Gucci",
-        "url": "https://www.kering.com/en/news/",
-        "source_name": "Gucci Official (Kering)",
-        "filter_brand": True,  # Filter for Gucci-specific content
+        "url": "https://www.gucci.com/us/en/st/stories",
+        "source_name": "Gucci Official",
     },
 ]
 
@@ -123,8 +121,11 @@ def fetch_brand(cfg: dict) -> list[dict]:
         links = _extract_links(cfg["url"], resp.text, cfg["brand"], filter_brand)
         print(f"[BrandSite] {cfg['brand']}: Found {len(links)} potential article links")
     except Exception as e:
-        if hasattr(e, 'response') and e.response and e.response.status_code == 403:
+        status = getattr(getattr(e, 'response', None), 'status_code', None)
+        if status == 403 or "403" in str(e):
             print(f"[BrandSite] {cfg['brand']}: Blocked by anti-bot protection (403) - skipping")
+        elif status == 404 or "404" in str(e):
+            print(f"[BrandSite] {cfg['brand']}: Index page not found (404) - check URL")
         else:
             print(f"[BrandSite] Error fetching index for {cfg['brand']}: {e}")
         return []

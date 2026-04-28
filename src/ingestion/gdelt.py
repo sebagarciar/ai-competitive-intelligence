@@ -5,6 +5,7 @@ Docs: https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/
 import requests
 import time
 from datetime import datetime, timezone
+from requests.exceptions import HTTPError
 
 BASE_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 
@@ -43,16 +44,32 @@ def fetch_brand(brand: str, max_records: int = 75) -> list[dict]:
             "format": "json",
             "timespan": "30d",
         }
-        try:
-            resp = requests.get(BASE_URL, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            print(f"[GDELT] Error fetching '{query}': {e}")
-            time.sleep(2)  # Rate limit: wait before next request
+        data = None
+        backoff = 10
+        for attempt in range(4):
+            try:
+                resp = requests.get(BASE_URL, params=params, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except HTTPError as e:
+                if resp.status_code == 429:
+                    print(f"[GDELT] Rate limited on '{query}', backing off {backoff}s (attempt {attempt+1})")
+                    time.sleep(backoff)
+                    backoff *= 2
+                else:
+                    print(f"[GDELT] Error fetching '{query}': {e}")
+                    break
+            except Exception as e:
+                print(f"[GDELT] Error fetching '{query}': {e}")
+                break
+        else:
+            print(f"[GDELT] Giving up on '{query}' after retries")
+
+        if data is None:
             continue
 
-        time.sleep(2)  # Rate limit: wait before next request
+        time.sleep(5)
 
         for art in data.get("articles", []):
             url = art.get("url", "")

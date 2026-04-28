@@ -142,7 +142,7 @@ else:
 st.divider()
 
 # ── Tabs ──
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Event Table", "Trend Visualization", "Sentiment Analysis", "Weekly Brief", "Source Coverage"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Event Table", "Trend Visualization", "Sentiment Analysis", "Weekly Brief", "Source Coverage", "X Feed"])
 
 # ─── Tab 1: Event Table ───────────────────────────────────────
 with tab1:
@@ -404,32 +404,61 @@ with tab5:
     if df_events.empty:
         st.info("No data available.")
     else:
-        # Pie chart: articles by source
-        source_counts = df_events.groupby("source_name")["item_id"].nunique().reset_index()
-        source_counts.columns = ["Source", "Articles"]
+        def _source_category(name: str) -> str:
+            n = str(name)
+            if any(n.startswith(p) for p in ("Bluesky -", "Reddit -", "X - ")):
+                return "Social Media"
+            if "Official" in n or n in ("Chanel Official", "Dior Official", "Gucci Official"):
+                return "Brand Sites"
+            if n == "GDELT":
+                return "News Aggregator"
+            if n in ("Bloomberg Markets",):
+                return "Financial Press"
+            if n.startswith("YouTube"):
+                return "YouTube"
+            return "Trade Press"
 
+        df_cov = df_events.copy()
+        df_cov["category"] = df_cov["source_name"].apply(_source_category)
+
+        CATEGORY_COLORS = {
+            "Trade Press": "#4C78A8",
+            "Social Media": "#F58518",
+            "News Aggregator": "#72B7B2",
+            "Financial Press": "#54A24B",
+            "Brand Sites": "#B279A2",
+            "YouTube": "#E45756",
+        }
+
+        # Pie: articles by category
+        cat_counts = df_cov.groupby("category")["item_id"].nunique().reset_index()
+        cat_counts.columns = ["Category", "Articles"]
         fig_pie = px.pie(
-            source_counts,
-            names="Source",
+            cat_counts,
+            names="Category",
             values="Articles",
-            title="Articles by Source",
-            hole=0.3,
+            title="Articles by Source Category",
+            hole=0.35,
+            color="Category",
+            color_discrete_map=CATEGORY_COLORS,
         )
+        fig_pie.update_traces(textposition="outside", textinfo="percent+label")
         st.plotly_chart(fig_pie, use_container_width=True)
 
-        # Bar: brand coverage per source
-        brand_source = df_events.groupby(["source_name", "competitor"])["item_id"].nunique().reset_index()
-        brand_source.columns = ["Source", "Brand", "Articles"]
-        fig_source_brand = px.bar(
-            brand_source,
-            x="Source",
+        # Bar: brand coverage per category
+        brand_cat = df_cov.groupby(["category", "competitor"])["item_id"].nunique().reset_index()
+        brand_cat.columns = ["Category", "Brand", "Articles"]
+        fig_brand_cat = px.bar(
+            brand_cat,
+            x="Category",
             y="Articles",
             color="Brand",
             barmode="stack",
-            title="Brand Coverage per Source",
+            title="Brand Coverage by Source Category",
             color_discrete_map={"Chanel": "#1a1a1a", "Dior": "#b5936c", "Gucci": "#5a7a4e"},
         )
-        st.plotly_chart(fig_source_brand, use_container_width=True)
+        fig_brand_cat.update_layout(height=350)
+        st.plotly_chart(fig_brand_cat, use_container_width=True)
 
         # Official vs media breakdown
         official_counts = df_events.groupby(["competitor", "official_source"])["item_id"].nunique().reset_index()
@@ -444,3 +473,128 @@ with tab5:
             title="Official vs Media Coverage by Brand",
         )
         st.plotly_chart(fig_official, use_container_width=True)
+
+        # Detailed breakdown in expander
+        with st.expander("Individual source breakdown"):
+            source_detail = df_cov.groupby(["category", "source_name"])["item_id"].nunique().reset_index()
+            source_detail.columns = ["Category", "Source", "Articles"]
+            st.dataframe(
+                source_detail.sort_values(["Category", "Articles"], ascending=[True, False]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+# ─── Tab 6: X Feed ────────────────────────────────────────────
+with tab6:
+    import re as _re
+
+    st.subheader("X (Twitter) Feed")
+    st.caption("Live posts fetched via Grok — updated each pipeline run.")
+
+    @st.cache_data(ttl=300)
+    def load_x_posts(days: int = 30) -> pd.DataFrame:
+        conn = get_connection()
+        df = pd.read_sql_query("""
+            SELECT item_id, competitor, source_name, source_url,
+                   published_at, excerpt, raw_text,
+                   sentiment_label, sentiment_score
+            FROM items
+            WHERE source_name LIKE 'X - @%'
+              AND published_at >= datetime('now', ?)
+            ORDER BY published_at DESC
+        """, conn, params=(f"-{days} days",))
+        conn.close()
+        return df
+
+    df_x = load_x_posts(days=days_back)
+    if selected_brands:
+        df_x = df_x[df_x["competitor"].isin(selected_brands)]
+
+    if df_x.empty:
+        st.info("No X posts yet. Run the pipeline to fetch live X data via Grok.")
+    else:
+        # Parse likes/retweets from excerpt prefix "[Likes: N, Retweets: N] text"
+        def _parse_engagement(excerpt: str):
+            m = _re.match(r"\[Likes:\s*(\d+),\s*Retweets:\s*(\d+)\]\s*(.*)", str(excerpt), _re.DOTALL)
+            if m:
+                return int(m.group(1)), int(m.group(2)), m.group(3).strip()
+            return 0, 0, str(excerpt).strip()
+
+        rows = df_x.to_dict("records")
+        for r in rows:
+            r["likes"], r["retweets"], r["post_text"] = _parse_engagement(r["excerpt"])
+
+        # Summary metrics
+        total_posts = len(rows)
+        total_likes = sum(r["likes"] for r in rows)
+        total_rt = sum(r["retweets"] for r in rows)
+        brand_counts = df_x["competitor"].value_counts()
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total Posts", total_posts)
+        m2.metric("Total Likes", f"{total_likes:,}")
+        m3.metric("Total Retweets", f"{total_rt:,}")
+        m4.metric("Brands", len(brand_counts))
+
+        st.divider()
+
+        # Engagement bar chart per brand
+        brand_eng = (
+            pd.DataFrame(rows)
+            .groupby("competitor")[["likes", "retweets"]]
+            .sum()
+            .reset_index()
+        )
+        fig_eng = px.bar(
+            brand_eng.melt(id_vars="competitor", value_vars=["likes", "retweets"],
+                           var_name="Metric", value_name="Count"),
+            x="competitor", y="Count", color="Metric", barmode="group",
+            title="Total Engagement by Brand",
+            labels={"competitor": "Brand"},
+            color_discrete_map={"likes": "#1DA1F2", "retweets": "#17BF63"},
+        )
+        fig_eng.update_layout(height=300)
+        st.plotly_chart(fig_eng, use_container_width=True)
+
+        st.divider()
+
+        # Brand filter pills
+        brand_filter = st.multiselect(
+            "Filter by brand", options=sorted(df_x["competitor"].unique()),
+            default=sorted(df_x["competitor"].unique()), key="x_brand_filter"
+        )
+        filtered_rows = [r for r in rows if r["competitor"] in brand_filter]
+
+        # Post cards
+        BRAND_COLORS = {"Chanel": "#1a1a1a", "Dior": "#b5936c", "Gucci": "#5a7a4e"}
+        SENTIMENT_EMOJI = {
+            "positive": "😊", "very_positive": "😃",
+            "negative": "😟", "very_negative": "😡",
+            "neutral": "😐",
+        }
+
+        for r in filtered_rows:
+            color = BRAND_COLORS.get(r["competitor"], "#555")
+            author = r["source_name"].replace("X - ", "")
+            date_str = r["published_at"][:10] if r["published_at"] else ""
+            sent_emoji = SENTIMENT_EMOJI.get(r.get("sentiment_label") or "neutral", "😐")
+            sent_score = r.get("sentiment_score")
+            sent_str = f"{sent_emoji} {sent_score:.2f}" if sent_score is not None else sent_emoji
+
+            with st.container(border=True):
+                col_brand, col_author, col_date, col_sent = st.columns([1, 2, 1, 1])
+                col_brand.markdown(
+                    f'<span style="background:{color};color:white;padding:2px 8px;'
+                    f'border-radius:4px;font-size:0.75rem">{r["competitor"]}</span>',
+                    unsafe_allow_html=True,
+                )
+                col_author.markdown(f"**{author}**")
+                col_date.caption(date_str)
+                col_sent.caption(f"Sentiment: {sent_str}")
+
+                st.markdown(r["post_text"] or "_No text_")
+
+                link_col, eng_col = st.columns([3, 1])
+                if r.get("source_url"):
+                    link_col.markdown(f"[View on X]({r['source_url']})")
+                eng_col.caption(f"♥ {r['likes']}  &nbsp;  🔁 {r['retweets']}")

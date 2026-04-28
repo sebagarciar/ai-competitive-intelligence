@@ -1,13 +1,16 @@
 """
-Bluesky social listening adapter using the public AT Protocol search API.
-No authentication required — uses the public appview endpoint.
-API docs: https://docs.bsky.app/docs/api/app-bsky-feed-search-posts
+Bluesky social listening adapter using the AT Protocol search API.
+Requires authentication: set BSKY_IDENTIFIER (handle or email) and
+BSKY_APP_PASSWORD (an app password from bsky.app/settings/app-passwords).
+Skips gracefully if credentials are absent.
 """
+import os
 import requests
 from datetime import datetime, timezone, timedelta
 from src.ingestion.query_planner import BRANDS, build_queries
 
-SEARCH_URL = "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts"
+AUTH_URL = "https://bsky.social/xrpc/com.atproto.server.createSession"
+SEARCH_URL = "https://bsky.social/xrpc/app.bsky.feed.searchPosts"
 LOOKBACK_DAYS = 7
 MIN_ENGAGEMENT = 2  # likeCount + repostCount
 MAX_RESULTS_PER_QUERY = 25
@@ -20,6 +23,24 @@ BRAND_KEYWORDS = {
 }
 
 
+def _get_access_token() -> str | None:
+    identifier = os.getenv("BSKY_IDENTIFIER")
+    password = os.getenv("BSKY_APP_PASSWORD")
+    if not identifier or not password:
+        return None
+    try:
+        resp = requests.post(
+            AUTH_URL,
+            json={"identifier": identifier, "password": password},
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json().get("accessJwt")
+    except Exception as e:
+        print(f"[Bluesky] Auth failed: {e}")
+        return None
+
+
 def _detect_brand(text: str) -> str | None:
     text_lower = text.lower()
     for brand, keywords in BRAND_KEYWORDS.items():
@@ -28,12 +49,12 @@ def _detect_brand(text: str) -> str | None:
     return None
 
 
-def _fetch_query(query: str) -> list[dict]:
-    """Call the Bluesky search API for one query string."""
+def _fetch_query(query: str, headers: dict) -> list[dict]:
     try:
         resp = requests.get(
             SEARCH_URL,
             params={"q": query, "limit": MAX_RESULTS_PER_QUERY},
+            headers=headers,
             timeout=REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
@@ -44,7 +65,6 @@ def _fetch_query(query: str) -> list[dict]:
 
 
 def _parse_post(post: dict, brand: str) -> dict | None:
-    """Map a Bluesky post object to the standard item schema."""
     try:
         record = post.get("record", {})
         text = record.get("text", "")
@@ -70,7 +90,6 @@ def _parse_post(post: dict, brand: str) -> dict | None:
         author = post.get("author", {})
         handle = author.get("handle", "unknown")
         uri = post.get("uri", "")
-        # Convert at:// URI to a browsable bsky.app URL
         url = ""
         if uri.startswith("at://"):
             parts = uri[5:].split("/")
@@ -103,10 +122,15 @@ def _parse_post(post: dict, brand: str) -> dict | None:
 def fetch_all(simple: bool = False) -> list[dict]:
     """
     Fetch Bluesky posts mentioning luxury brands.
-
+    Requires BSKY_IDENTIFIER and BSKY_APP_PASSWORD env vars.
     simple=True uses only the brand name query (retry fallback).
-    Returns empty list gracefully on network failures.
     """
+    token = _get_access_token()
+    if not token:
+        print("[Bluesky] Skipping: set BSKY_IDENTIFIER and BSKY_APP_PASSWORD to enable")
+        return []
+
+    headers = {"Authorization": f"Bearer {token}"}
     mode = "simple" if simple else "full"
     all_items: list[dict] = []
     seen_urls: set[str] = set()
@@ -116,12 +140,11 @@ def fetch_all(simple: bool = False) -> list[dict]:
         brand_count = 0
 
         for query in queries:
-            posts = _fetch_query(query)
+            posts = _fetch_query(query, headers)
             for post in posts:
                 item = _parse_post(post, brand)
                 if item is None:
                     continue
-                # Prefer brand detected from text; skip if no brand match
                 detected = _detect_brand(item["raw_text"])
                 if detected:
                     item["competitor"] = detected

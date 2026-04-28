@@ -35,6 +35,26 @@ FEEDS = [
         "source_name": "Vogue",
         "source_type": "fashion_media",
     },
+    {
+        "url": "https://feeds.bloomberg.com/markets/news.rss",
+        "source_name": "Bloomberg Markets",
+        "source_type": "news_wire",
+    },
+    {
+        "url": "https://www.elle.com/rss/all.xml/",
+        "source_name": "Elle",
+        "source_type": "fashion_media",
+    },
+    {
+        "url": "https://www.dezeen.com/feed/",
+        "source_name": "Dezeen",
+        "source_type": "fashion_media",
+    },
+    {
+        "url": "https://rss.nytimes.com/services/xml/rss/nyt/FashionandStyle.xml",
+        "source_name": "NY Times Fashion",
+        "source_type": "fashion_media",
+    },
 ]
 
 BRANDS = ["Chanel", "Dior", "Gucci"]
