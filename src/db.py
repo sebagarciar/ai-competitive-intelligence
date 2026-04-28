@@ -85,11 +85,23 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_items_competitor ON items(competitor);
             CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at);
-            CREATE INDEX IF NOT EXISTS idx_items_sentiment ON items(sentiment_score);
             CREATE INDEX IF NOT EXISTS idx_events_competitor ON events(competitor);
             CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
             CREATE INDEX IF NOT EXISTS idx_trends_score ON trends(trend_score DESC);
         """)
+        # Migrate pre-sentiment schema — safe to run on new DBs too (IF NOT EXISTS equivalent)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
+        for col, typedef in [
+            ("sentiment_label", "TEXT"),
+            ("sentiment_score", "REAL"),
+            ("sentiment_confidence", "REAL"),
+        ]:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
+        # Create sentiment index only after column is guaranteed to exist
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_sentiment ON items(sentiment_score)"
+        )
 
 
 # --- Item helpers ---
