@@ -207,7 +207,7 @@ def generate_brief() -> str:
 
     implications = _build_implications(events_by_brand, trends)
 
-    env = Environment(loader=BaseLoader())
+    env = Environment(loader=BaseLoader(), trim_blocks=True, lstrip_blocks=True)
     template = env.from_string(BRIEF_TEMPLATE)
     brief_md = template.render(
         generated_at=generated_at,

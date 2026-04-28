@@ -34,10 +34,9 @@ st.markdown("""
 [data-testid="stSidebar"] {
     background-color: #f5f5f0;
 }
-/* Active tab: gold underline */
+/* Active tab: gold underline only — don't override text color */
 .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
     border-bottom: 3px solid #c9a96e !important;
-    color: #1a1a1a !important;
     font-weight: 600;
 }
 /* Tab list background */
@@ -306,10 +305,15 @@ Avg impact: <strong>{impact:.1f}/5</strong> &nbsp;·&nbsp;
                 title = str(row.get("title", ""))[:90]
                 impact = row.get("impact_score")
                 source = row.get("source_name", "")
+                url = row.get("source_url", "")
+                title_html = (
+                    f'<a href="{url}" target="_blank" style="color:#1a1a1a">{title}…</a>'
+                    if url else f"{title}…"
+                )
                 st.markdown(f"""
 <span class="brand-badge" style="background:{brand_color}">{row['competitor']}</span>
 <small style="color:#666">{event_label}</small><br>
-<span style="font-size:0.9rem">{title}…</span><br>
+<span style="font-size:0.9rem">{title_html}</span><br>
 <small style="color:#999">Impact: {impact:.1f}/5 &nbsp;·&nbsp; {source}</small>
 """, unsafe_allow_html=True)
                 st.markdown("---")
@@ -585,14 +589,22 @@ with tab_perception:
                 for _, row in df_sent.nlargest(5, "sentiment_score").iterrows():
                     st.markdown(f"**{row['competitor']}** ({row['sentiment_score']:.2f})")
                     st.caption(f"{str(row['title'])[:100]}…")
-                    st.caption(f"Source: {row['source_name']}")
+                    url = row.get("source_url", "")
+                    if url:
+                        st.markdown(f"[{row['source_name']}]({url})")
+                    else:
+                        st.caption(f"Source: {row['source_name']}")
                     st.divider()
             with col_neg:
                 st.markdown("**Most Negative 😟**")
                 for _, row in df_sent.nsmallest(5, "sentiment_score").iterrows():
                     st.markdown(f"**{row['competitor']}** ({row['sentiment_score']:.2f})")
                     st.caption(f"{str(row['title'])[:100]}…")
-                    st.caption(f"Source: {row['source_name']}")
+                    url = row.get("source_url", "")
+                    if url:
+                        st.markdown(f"[{row['source_name']}]({url})")
+                    else:
+                        st.caption(f"Source: {row['source_name']}")
                     st.divider()
 
     st.divider()
