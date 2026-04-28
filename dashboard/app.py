@@ -307,7 +307,7 @@ Avg impact: <strong>{impact:.1f}/5</strong> &nbsp;·&nbsp;
                 source = row.get("source_name", "")
                 url = row.get("source_url", "")
                 title_html = (
-                    f'<a href="{url}" target="_blank" style="color:#1a1a1a">{title}…</a>'
+                    f'<a href="{url}" target="_blank" style="color:#c9a96e">{title}…</a>'
                     if url else f"{title}…"
                 )
                 st.markdown(f"""
