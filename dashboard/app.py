@@ -427,11 +427,8 @@ html, body, [class*="css"], .stApp, .stMarkdown, .stMarkdown p,
     background: #fff;
     padding: 0.95rem 1.1rem;
     margin-bottom: 0.5rem;
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 1rem;
-    align-items: center;
 }
+.cc-critical-body { width: 100%; }
 .cc-critical .label {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.6rem;
@@ -452,20 +449,28 @@ html, body, [class*="css"], .stApp, .stMarkdown, .stMarkdown p,
     color: #c9a96e;
     margin-right: 0.5rem;
 }
-.cc-critical .stats {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: #555;
-    text-align: right;
-    letter-spacing: 0.05em;
-}
-.cc-critical .stats .big {
+.cc-critical-title {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 1.6rem;
-    color: #1a1a1a;
-    font-weight: 500;
-    display: block;
-    line-height: 1;
+    font-size: 0.95rem;
+    color: #333;
+    margin: 0.3rem 0 0.4rem 0;
+}
+.cc-critical-title a { color: #333; text-decoration: underline; }
+.cc-critical-snippet {
+    font-size: 0.82rem;
+    color: #555;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+    font-style: italic;
+}
+.cc-critical-footer {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.62rem;
+    color: #888;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
 }
 
 /* Trend card */
@@ -745,6 +750,25 @@ def load_trends() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def load_critical_event_details() -> dict:
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT e.competitor, e.event_type, e.impact_score, e.evidence_snippet,
+               i.title, i.source_name, i.source_url, i.published_at
+        FROM events e
+        JOIN items i ON e.item_id = i.item_id
+        ORDER BY e.impact_score DESC
+    """).fetchall()
+    conn.close()
+    seen = {}
+    for r in rows:
+        key = (r["competitor"], r["event_type"])
+        if key not in seen:
+            seen[key] = dict(r)
+    return seen
+
+
+@st.cache_data(ttl=300)
 def load_x_posts(days: int = 30) -> pd.DataFrame:
     conn = get_connection()
     df = pd.read_sql_query("""
@@ -928,21 +952,30 @@ with tab_digest:
 
     if not df_critical.empty:
         st.markdown('<div class="cc-section-eyebrow" style="color:#b8463f;">Critical Alerts</div>', unsafe_allow_html=True)
+        critical_details = load_critical_event_details()
         for _, row in df_critical.iterrows():
             event_label = str(row.get("event_type", "")).replace("_", " ").title()
             competitor = row.get("competitor", "Unknown")
-            score = row.get("trend_score", 0)
             impact = row.get("avg_impact", 0)
             count = row.get("count_7d", 0)
+            detail = critical_details.get((competitor, row.get("event_type", "")), {})
+            art_title = _esc(str(detail.get("title", "") or "")[:120])
+            snippet = _esc(str(detail.get("evidence_snippet", "") or "")[:220])
+            source = _esc(str(detail.get("source_name", "") or ""))
+            url = str(detail.get("source_url", "") or "")
+            date = str(detail.get("published_at", "") or "")[:10]
+            title_html = f'<a href="{url}" target="_blank">{art_title}</a>' if url and art_title else art_title
             st.markdown(f"""
 <div class="cc-critical">
-  <div>
+  <div class="cc-critical-body">
     <div class="label">▲ Critical Trend</div>
     <div class="headline"><span class="brand">{_esc(competitor)}</span>{_esc(event_label)}</div>
-  </div>
-  <div class="stats">
-    <span class="big">{score:.2f}</span>
-    {impact:.1f}/5 IMPACT · {count} ARTICLES
+    {f'<div class="cc-critical-title">{title_html}</div>' if art_title else ''}
+    {f'<div class="cc-critical-snippet">{snippet}</div>' if snippet else ''}
+    <div class="cc-critical-footer">
+      <span>{source}{(' · ' + date) if date else ''}</span>
+      <span>{impact:.1f}/5 IMPACT · {count} ARTICLES</span>
+    </div>
   </div>
 </div>
 """, unsafe_allow_html=True)

@@ -28,7 +28,7 @@ DBSCAN_MIN_SAMPLES: int = _int("DBSCAN_MIN_SAMPLES", 2)  # min articles per clus
 # --- Trend detection ---
 TREND_SCORE_THRESHOLD: float = _float("TREND_SCORE_THRESHOLD", 0.3)
 MIN_UNIQUE_SOURCES: int = _int("MIN_UNIQUE_SOURCES", 1)
-CRITICAL_IMPACT_THRESHOLD: float = _float("CRITICAL_IMPACT_THRESHOLD", 3.5)
+CRITICAL_IMPACT_THRESHOLD: float = _float("CRITICAL_IMPACT_THRESHOLD", 2.3)
 
 # Trend score formula weights: score = W_BURST*burst_z + W_SOURCES*log(1+sources) + W_IMPACT*(impact/5)
 TREND_WEIGHT_BURST: float = _float("TREND_WEIGHT_BURST", 0.5)

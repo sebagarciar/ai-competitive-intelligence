@@ -102,7 +102,7 @@ def detect_trends() -> list[dict]:
         is_critical = (
             count_7d == 1
             and max_impact >= CRITICAL_IMPACT_THRESHOLD
-            and (has_official or unique_sources >= 2)
+            and (has_official or unique_sources >= 1)
         )
 
         trend = {
