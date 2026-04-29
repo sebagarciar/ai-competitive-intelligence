@@ -14,6 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import io
+import re
 import numpy as np
 import streamlit as st
 import pandas as pd
@@ -815,6 +817,91 @@ def load_brief() -> str:
     return "_No brief generated yet. Run the pipeline first._"
 
 
+def _brief_to_pdf(markdown_text: str) -> bytes:
+    """Render the markdown brief as a PDF and return raw bytes."""
+    from fpdf import FPDF
+
+    class BriefPDF(FPDF):
+        def header(self):
+            self.set_font("Helvetica", "B", 8)
+            self.set_text_color(180, 150, 100)
+            self.cell(0, 8, "C&C INTELLIGENCE  ·  CONFIDENTIAL", align="C")
+            self.ln(2)
+            self.set_draw_color(26, 26, 26)
+            self.set_line_width(0.4)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+            self.ln(4)
+
+        def footer(self):
+            self.set_y(-14)
+            self.set_font("Helvetica", "", 7)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 6, f"Page {self.page_no()} / {{nb}}", align="C")
+
+    pdf = BriefPDF(orientation="P", unit="mm", format="A4")
+    pdf.alias_nb_pages()
+    pdf.set_margins(left=22, top=18, right=22)
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    _H1 = re.compile(r"^#\s+(.*)")
+    _H2 = re.compile(r"^##\s+(.*)")
+    _H3 = re.compile(r"^###\s+(.*)")
+    _HR = re.compile(r"^---+$")
+    _BOLD = re.compile(r"\*\*(.+?)\*\*")
+
+    def _strip_md(text: str) -> str:
+        text = _BOLD.sub(r"\1", text)
+        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+        return text.strip()
+
+    for line in markdown_text.splitlines():
+        m1 = _H1.match(line)
+        m2 = _H2.match(line)
+        m3 = _H3.match(line)
+
+        if m1:
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 18)
+            pdf.set_text_color(26, 26, 26)
+            pdf.multi_cell(0, 9, _strip_md(m1.group(1)))
+            pdf.ln(1)
+        elif m2:
+            pdf.ln(5)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.set_text_color(26, 26, 26)
+            pdf.multi_cell(0, 7, _strip_md(m2.group(1)))
+            pdf.set_draw_color(230, 227, 218)
+            pdf.set_line_width(0.2)
+            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+            pdf.ln(3)
+        elif m3:
+            pdf.ln(3)
+            pdf.set_font("Helvetica", "I", 11)
+            pdf.set_text_color(181, 147, 108)
+            pdf.multi_cell(0, 6, _strip_md(m3.group(1)))
+            pdf.ln(1)
+        elif _HR.match(line.strip()):
+            pdf.ln(2)
+            pdf.set_draw_color(200, 195, 180)
+            pdf.set_line_width(0.2)
+            pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+            pdf.ln(3)
+        elif line.strip().startswith(("- ", "* ")):
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(44, 44, 44)
+            pdf.multi_cell(0, 5.5, "  • " + _strip_md(line.strip()[2:]))
+        elif line.strip():
+            pdf.set_font("Helvetica", "", 9.5)
+            pdf.set_text_color(44, 44, 44)
+            pdf.multi_cell(0, 5.5, _strip_md(line))
+        else:
+            pdf.ln(2)
+
+    return bytes(pdf.output())
+
+
 def _last_updated_string() -> str:
     """Latest brief file timestamp, or 'never'."""
     briefs_dir = Path(__file__).parent.parent / "data" / "briefs"
@@ -954,10 +1041,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_digest, tab_trends, tab_perception, tab_brief, tab_sources, tab_moves, tab_search = st.tabs([
+tab_digest, tab_trends, tab_perception, tab_compare, tab_brief, tab_sources, tab_moves, tab_search = st.tabs([
     "Digest",
     "Trends",
     "Perception",
+    "Compare",
     "Weekly Brief",
     "Source Coverage",
     "Event Feed",
@@ -1369,6 +1457,42 @@ with tab_perception:
                 fig_pie.update_layout(title=dict(text="Sentiment Distribution", x=0.01))
                 st.plotly_chart(fig_pie, use_container_width=True)
 
+            # Diverging bar: positive vs negative share-of-voice per brand
+            brand_labels = sorted(df_sent["competitor"].unique())
+            pos_shares, neg_shares, neu_shares = [], [], []
+            for b in brand_labels:
+                sub = df_sent[df_sent["competitor"] == b]
+                n = len(sub)
+                pos_shares.append(sub["sentiment_label"].isin(["positive", "very_positive"]).sum() / n * 100)
+                neg_shares.append(-sub["sentiment_label"].isin(["negative", "very_negative"]).sum() / n * 100)
+                neu_shares.append(sub["sentiment_label"].eq("neutral").sum() / n * 100)
+
+            fig_div = go.Figure()
+            fig_div.add_trace(go.Bar(
+                name="Positive", y=brand_labels, x=pos_shares, orientation="h",
+                marker_color="#5a8a5a",
+                hovertemplate="%{y}: +%{x:.1f}%<extra>Positive</extra>",
+            ))
+            fig_div.add_trace(go.Bar(
+                name="Neutral", y=brand_labels, x=neu_shares, orientation="h",
+                marker_color="#5a5a55",
+                hovertemplate="%{y}: %{x:.1f}%<extra>Neutral</extra>",
+            ))
+            fig_div.add_trace(go.Bar(
+                name="Negative", y=brand_labels, x=neg_shares, orientation="h",
+                marker_color="#b8463f",
+                hovertemplate="%{y}: %{x:.1f}%<extra>Negative</extra>",
+            ))
+            fig_div.add_vline(x=0, line_color="#e6e3da", line_width=1)
+            fig_div.update_layout(
+                barmode="relative", height=220,
+                title=dict(text="Sentiment Share-of-Voice by Brand", x=0.01),
+                **PLOTLY_DARK,
+            )
+            fig_div.update_xaxes(title_text="← Negative  |  Positive →", ticksuffix="%")
+            fig_div.update_yaxes(title_text="")
+            st.plotly_chart(fig_div, use_container_width=True)
+
             col_pos, col_neg = st.columns(2)
             with col_pos:
                 st.markdown('<div class="cc-section-eyebrow" style="color:#5a8a5a;">Most Positive</div>', unsafe_allow_html=True)
@@ -1502,6 +1626,128 @@ with tab_perception:
                 st.plotly_chart(fig_ss, use_container_width=True)
 
 
+# ─── Tab 4b: Competitor Comparison ──────────────────────────
+with tab_compare:
+    st.markdown('<div class="cc-section-eyebrow">Head-to-Head</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cc-section-title">Competitor Comparison</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cc-section-dek">Chanel vs Dior vs Gucci — event mix, activity trends, and key metrics side-by-side.</div>', unsafe_allow_html=True)
+
+    if df_events.empty:
+        st.markdown('<div style="color:#888;font-size:0.9rem;">No data available. Run the pipeline first.</div>', unsafe_allow_html=True)
+    else:
+        df_cmp = df_events[df_events["event_type"].notna()].copy()
+        df_cmp["event_label"] = df_cmp["event_type"].str.replace("_", " ").str.title()
+
+        # ── Row 1: KPI comparison strip ──
+        st.markdown('<div class="cc-section-eyebrow">Key Metrics</div>', unsafe_allow_html=True)
+        kpi_cols = st.columns(3)
+        for i, brand in enumerate(BRANDS):
+            sub = df_events[df_events["competitor"] == brand]
+            sub_evt = df_cmp[df_cmp["competitor"] == brand]
+            n_art = sub["item_id"].nunique()
+            n_evt = len(sub_evt)
+            avg_imp = sub_evt["impact_score"].mean()
+            avg_rel = sub_evt["relevance_score"].mean()
+            avg_snt = sub["sentiment_score"].mean() if "sentiment_score" in sub.columns else float("nan")
+            with kpi_cols[i]:
+                brand_color = BRAND_COLORS[brand]
+                st.markdown(f"""
+<div style="border-top:3px solid {brand_color};padding:0.9rem 1rem;background:#fff;border:1px solid #e6e3da;border-top:3px solid {brand_color};">
+  <div style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:500;color:#1a1a1a;margin-bottom:0.6rem;">{brand}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+    <div><div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#888;">Articles</div><div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:#1a1a1a;">{n_art}</div></div>
+    <div><div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#888;">Events</div><div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:#1a1a1a;">{n_evt}</div></div>
+    <div><div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#888;">Avg Impact</div><div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:#1a1a1a;">{"N/A" if pd.isna(avg_imp) else f"{avg_imp:.1f}"}</div></div>
+    <div><div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.16em;text-transform:uppercase;color:#888;">Sentiment</div><div style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:{"#5a8a5a" if not pd.isna(avg_snt) and avg_snt > 0.1 else "#b8463f" if not pd.isna(avg_snt) and avg_snt < -0.1 else "#888"};">{"N/A" if pd.isna(avg_snt) else f"{avg_snt:+.2f}"}</div></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
+
+        # ── Row 2: Event-type distribution — grouped bar ──
+        st.markdown('<div class="cc-section-eyebrow">Event Mix</div>', unsafe_allow_html=True)
+        event_counts = (
+            df_cmp.groupby(["event_label", "competitor"])["item_id"]
+            .nunique()
+            .reset_index(name="count")
+        )
+        fig_grouped = px.bar(
+            event_counts, x="event_label", y="count",
+            color="competitor", barmode="group",
+            labels={"event_label": "Event Type", "count": "Articles", "competitor": "Brand"},
+            color_discrete_map=CHART_BRANDS,
+        )
+        fig_grouped.update_layout(height=380, **PLOTLY_DARK)
+        fig_grouped.update_layout(title=dict(text="Articles per Event Type — All Brands", x=0.01))
+        fig_grouped.update_xaxes(tickangle=-30)
+        st.plotly_chart(fig_grouped, use_container_width=True)
+
+        # ── Row 3: Normalised share — what % of each brand's events are each type? ──
+        totals = df_cmp.groupby("competitor")["item_id"].nunique().rename("total")
+        share_df = event_counts.join(totals, on="competitor")
+        share_df["share_pct"] = share_df["count"] / share_df["total"] * 100
+        fig_share = px.bar(
+            share_df, x="competitor", y="share_pct",
+            color="event_label", barmode="stack",
+            labels={"competitor": "Brand", "share_pct": "Share (%)", "event_label": "Event Type"},
+            color_discrete_sequence=px.colors.qualitative.Set3,
+        )
+        fig_share.update_layout(height=360, **PLOTLY_DARK)
+        fig_share.update_layout(title=dict(text="Event-Type Mix (Normalised Share)", x=0.01))
+        fig_share.update_yaxes(title_text="Share of Events (%)", ticksuffix="%")
+        st.plotly_chart(fig_share, use_container_width=True)
+
+        st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
+
+        # ── Row 4: Activity over time per brand, per event type ──
+        st.markdown('<div class="cc-section-eyebrow">Activity Over Time</div>', unsafe_allow_html=True)
+        event_type_filter = st.multiselect(
+            "Filter by event type",
+            options=sorted(df_cmp["event_label"].unique()),
+            default=sorted(df_cmp["event_label"].unique()),
+            key="compare_event_filter",
+        )
+        df_time = df_cmp[df_cmp["event_label"].isin(event_type_filter)].copy()
+        df_time["date"] = pd.to_datetime(df_time["published_at"], errors="coerce").dt.normalize()
+        df_time = df_time.dropna(subset=["date"])
+
+        if not df_time.empty:
+            daily_brand = (
+                df_time.groupby(["date", "competitor"])["item_id"]
+                .nunique()
+                .reset_index(name="articles")
+            )
+            fig_time = px.line(
+                daily_brand, x="date", y="articles", color="competitor",
+                labels={"date": "Date", "articles": "Events", "competitor": "Brand"},
+                color_discrete_map=CHART_BRANDS,
+            )
+            fig_time.update_layout(height=320, **PLOTLY_DARK)
+            fig_time.update_layout(title=dict(text="Daily Event Volume — All Brands", x=0.01))
+            fig_time.update_traces(line=dict(width=2))
+            st.plotly_chart(fig_time, use_container_width=True)
+
+        # ── Row 5: Impact × Relevance scatter per brand ──
+        st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
+        st.markdown('<div class="cc-section-eyebrow">Quality Signal</div>', unsafe_allow_html=True)
+        df_scatter = df_cmp[df_cmp["impact_score"].notna() & df_cmp["relevance_score"].notna()].copy()
+        if not df_scatter.empty:
+            fig_ir = px.scatter(
+                df_scatter, x="relevance_score", y="impact_score",
+                color="competitor", symbol="competitor",
+                hover_data=["event_label", "title"],
+                labels={"relevance_score": "Relevance", "impact_score": "Impact", "competitor": "Brand"},
+                color_discrete_map=CHART_BRANDS,
+                opacity=0.7,
+            )
+            fig_ir.update_layout(height=360, **PLOTLY_DARK)
+            fig_ir.update_layout(title=dict(text="Impact vs Relevance — Every Event", x=0.01))
+            fig_ir.update_traces(marker=dict(size=7, line=dict(color="#1a1a1a", width=0.5)))
+            st.plotly_chart(fig_ir, use_container_width=True)
+            st.markdown('<div style="font-size:0.78rem;color:#888;letter-spacing:0.04em;margin:-0.5rem 0 1rem;">Upper-right = high impact + on-topic. Each dot is one classified event.</div>', unsafe_allow_html=True)
+
+
 # ─── Tab 5: Weekly Brief (PDF-style) ─────────────────────────
 with tab_brief:
     st.markdown('<div class="cc-section-eyebrow">Editorial Desk</div>', unsafe_allow_html=True)
@@ -1522,6 +1768,16 @@ with tab_brief:
         st.markdown(f'<div style="font-family:JetBrains Mono;font-size:0.7rem;letter-spacing:0.14em;color:#888;text-transform:uppercase;padding-top:0.5rem;">File · {file_label}</div>', unsafe_allow_html=True)
 
     brief_md = load_brief()
+    with col_b:
+        pdf_filename = f"brief_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+        pdf_bytes = _brief_to_pdf(brief_md)
+        st.download_button(
+            label="Download PDF",
+            data=pdf_bytes,
+            file_name=pdf_filename,
+            mime="application/pdf",
+            key="download_brief_pdf",
+        )
     today_long = datetime.now(timezone.utc).strftime("%d %B %Y").upper()
     brief_html = mistune.html(brief_md)
 
