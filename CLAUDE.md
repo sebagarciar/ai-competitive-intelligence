@@ -18,6 +18,9 @@ python -m src.pipeline --skip-ingest
 # Skip local LLM synthesis (use deterministic rule-based implications instead)
 python -m src.pipeline --no-llm
 
+# Skip zero-shot classification (keyword-only extraction, faster but lower quality)
+python -m src.pipeline --no-zero-shot
+
 # Launch Streamlit dashboard (7 tabs: digest, trends, perception, brief, sources, event feed, search)
 streamlit run dashboard/app.py
 
@@ -38,7 +41,7 @@ The pipeline orchestrates seven sequential stages:
 3. **Language** (`process_language()`) — Detects language with `langdetect`, translates Spanish→English using Google Translate free tier.
 4. **Embed** (`embed()`) — Generates 384-dim embeddings via local `all-MiniLM-L6-v2` model. Stored as BLOBs in SQLite.
 5. **Deduplicate** — Semantic deduplication using cosine similarity (threshold: 0.92).
-6. **Extract** (`extract()`) — Event classification using keyword scoring; zero-shot classifier is optional fallback (`use_zero_shot=False` by default).
+6. **Extract** (`extract()`) — Event classification: keywords act as a fast pre-filter (skip zero-shot when `kw_conf >= KEYWORD_CONFIDENCE_THRESHOLD=0.35`); zero-shot (`cross-encoder/nli-MiniLM2-L6-H768`) is the primary classifier for ambiguous items. Zero-shot is enabled by default (`use_zero_shot=True`); disable with `--no-zero-shot` for faster runs.
 7. **Cluster** (`run_clustering()`) — DBSCAN on embeddings to discover semantic themes.
 8. **Trends** (`detect_trends()`) — Burst detection formula: `trend_score = 0.45*burst_z + 0.27*log(1+sources) + 0.18*(impact/5) + 0.10*avg_sentiment`. Flags Critical Events (single high-impact article from official source). `avg_sentiment` is persisted in the trends table.
 9. **Brief** (`generate_brief()`) — Jinja2 template rendering. Saves to `data/briefs/brief_YYYYMMDD.md`.
@@ -99,5 +102,11 @@ Metric functions live in `src/evaluation.py` (importable, testable):
 - `precision_at_k(labels, k=10)` — fraction of top-k items judged relevant
 - `event_f1(y_true, y_pred)` — returns `{macro, weighted, report}` dict using sklearn
 - `trend_precision_at_k(labels, k=5)` — fraction of top-k trends judged valid
+- `run_trend_ablation(events, weight_configs)` — evaluates multiple trend formula weight sets using three unsupervised proxy metrics (spearman_corr, high_impact_mean_rank, top5_mean_impact); used to justify the chosen weights without hand-labeled trends
 
-`notebooks/evaluation.ipynb` imports from `src.evaluation` and provides the manual labeling workflow. The notebook also contains a classifier fine-tuning section: label ~150 events, train a `LogisticRegression` on the stored 384-dim embeddings, compare F1 vs keyword baseline, and save to `data/event_classifier.joblib`. Set `USE_TRAINED_CLASSIFIER=1` (env var) to activate it in the pipeline.
+`notebooks/evaluation.ipynb` imports from `src.evaluation` and provides the manual labeling workflow. The notebook also contains:
+- **Classifier fine-tuning**: label ~150 events, train a `LogisticRegression` on the stored 384-dim embeddings, compare F1 vs keyword baseline, save to `data/event_classifier.joblib`. Set `USE_TRAINED_CLASSIFIER=1` to activate in the pipeline.
+- **Trend weight ablation**: 5 candidate weight configurations compared across proxy metrics; chart saved to `data/trend_weight_ablation.png`. Rationale for chosen weights (burst=0.45, sources=0.27, impact=0.18, sentiment=0.10) documented inline.
+
+## Relevance Scoring
+`relevance_score` in the events table is computed as **cosine similarity** between the article's stored 384-dim embedding and a per-brand reference embedding (`BRAND_REFERENCES` in `src/processing/extractor.py`), mapped to [1.0, 5.0]. Falls back to brand-mention count if no embedding is available. Reference embeddings are pre-warmed before the extraction loop and cached in-process.

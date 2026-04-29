@@ -134,14 +134,14 @@ def analyze_sentiment() -> None:
     print(f"[Pipeline] Analyzed sentiment for {len(pending)} items")
 
 
-def extract() -> None:
+def extract(use_zero_shot: bool = True) -> None:
     """Extract events from all embedded items that don't yet have an event record."""
     from src.db import get_connection
     conn = get_connection()
     rows = conn.execute("""
         SELECT i.item_id, i.competitor, i.source_name, i.source_url,
                i.title, i.excerpt, i.raw_text, i.translated_text,
-               i.original_language, i.official_source
+               i.original_language, i.official_source, i.embedding
         FROM items i
         LEFT JOIN events e ON i.item_id = e.item_id
         WHERE e.event_id IS NULL
@@ -153,14 +153,31 @@ def extract() -> None:
         print("[Pipeline] No new items to extract events from.")
         return
 
+    # Pre-warm brand reference embeddings so the first item doesn't pay the load cost
+    try:
+        from src.processing.extractor import _get_brand_ref_embedding, BRAND_REFERENCES
+        for brand in BRAND_REFERENCES:
+            _get_brand_ref_embedding(brand)
+    except Exception:
+        pass
+
+    if use_zero_shot:
+        # Pre-warm the zero-shot model once before the loop to avoid per-item startup cost
+        try:
+            from src.processing.extractor import _get_zs_pipeline
+            _get_zs_pipeline()
+        except Exception as e:
+            print(f"[Pipeline] Zero-shot model unavailable, falling back to keywords only: {e}")
+            use_zero_shot = False
+
     for item in items:
-        event = extract_event(item, use_zero_shot=False)
+        event = extract_event(item, use_zero_shot=use_zero_shot)
         insert_event(event)
 
     print(f"[Pipeline] Extracted events for {len(items)} items")
 
 
-def run_pipeline(skip_ingest: bool = False, use_llm: bool = True) -> None:
+def run_pipeline(skip_ingest: bool = False, use_llm: bool = True, use_zero_shot: bool = True) -> None:
     print("=" * 60)
     print("AI Competitive Intelligence Copilot — Pipeline Run")
     print("=" * 60)
@@ -174,7 +191,7 @@ def run_pipeline(skip_ingest: bool = False, use_llm: bool = True) -> None:
 
     embed()
     analyze_sentiment()  # New: analyze sentiment after embedding
-    extract()
+    extract(use_zero_shot=use_zero_shot)
     run_clustering()
     detect_trends()
     brief = generate_brief(use_llm=use_llm)
@@ -189,5 +206,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the intelligence pipeline")
     parser.add_argument("--skip-ingest", action="store_true", help="Skip ingestion step")
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM-based brief synthesis (use rule-based implications)")
+    parser.add_argument("--no-zero-shot", action="store_true", help="Use keyword-only event classification (faster, lower quality)")
     args = parser.parse_args()
-    run_pipeline(skip_ingest=args.skip_ingest, use_llm=not args.no_llm)
+    run_pipeline(skip_ingest=args.skip_ingest, use_llm=not args.no_llm, use_zero_shot=not args.no_zero_shot)

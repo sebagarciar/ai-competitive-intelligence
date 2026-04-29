@@ -2,14 +2,16 @@
 Event extraction without an LLM API.
 
 Two-step approach:
-  1. Keyword scoring — fast, deterministic, covers ~80% of cases
-  2. Zero-shot classification (facebook/bart-large-mnli) — used when keyword
-     confidence is below threshold; loaded lazily to avoid startup cost
+  1. Keyword pre-filter — fast, deterministic; skips zero-shot when confidence
+     is above KEYWORD_CONFIDENCE_THRESHOLD (high-signal items only)
+  2. Zero-shot classification (cross-encoder/nli-MiniLM2-L6-H768) — primary
+     classifier for ambiguous items; pre-warmed by the pipeline before the loop
 """
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
+import numpy as np
 from src.config import KEYWORD_CONFIDENCE_THRESHOLD, USE_TRAINED_CLASSIFIER
 
 _CLASSIFIER_PATH = Path(__file__).parent.parent.parent / "data" / "event_classifier.joblib"
@@ -131,7 +133,45 @@ def _evidence_snippet(text: str, event_type: str) -> str:
     return text[:300]
 
 
-def _relevance_score(text: str, brand: str) -> float:
+# Reference descriptions that define each brand's competitive identity.
+# These are embedded once and cached; cosine similarity against an article's
+# embedding gives a signal of topical relevance that is more robust than raw
+# mention counts (e.g. a Chanel article that says "LVMH rival" once still scores high).
+BRAND_REFERENCES: dict[str, str] = {
+    "Chanel": (
+        "Chanel luxury fashion house haute couture iconic French brand timeless elegance "
+        "Coco Chanel tweed jacket quilted bag perfume No. 5 Matthieu Blazy Karl Lagerfeld"
+    ),
+    "Dior": (
+        "Dior Christian Dior luxury fashion house haute couture French maison New Look "
+        "elegant feminine Maria Grazia Chiuri Kim Jones Miss Dior J'adore Sauvage"
+    ),
+    "Gucci": (
+        "Gucci Italian luxury fashion house Guccio Gucci leather goods GG logo "
+        "eclectic maximalist Alessandro Michele Sabato De Sarno Florentine heritage"
+    ),
+}
+
+_brand_ref_embeddings: dict[str, np.ndarray] = {}
+
+
+def _get_brand_ref_embedding(brand: str) -> Optional[np.ndarray]:
+    if brand not in BRAND_REFERENCES:
+        return None
+    if brand not in _brand_ref_embeddings:
+        from src.processing.embeddings import embed_text
+        _brand_ref_embeddings[brand] = embed_text(BRAND_REFERENCES[brand])
+    return _brand_ref_embeddings[brand]
+
+
+def _relevance_score(text: str, brand: str, embedding: Optional[np.ndarray] = None) -> float:
+    ref_emb = _get_brand_ref_embedding(brand)
+    if embedding is not None and ref_emb is not None:
+        # Both embeddings are L2-normalised, so dot product == cosine similarity.
+        # Map [-1, 1] → [1.0, 5.0] so the scale stays consistent with the old range.
+        sim = float(np.dot(embedding, ref_emb))
+        return round(max(1.0, min(5.0, 1.0 + sim * 4.0)), 2)
+    # Fallback when no pre-computed embedding is available
     count = text.lower().count(brand.lower())
     if count >= 3:
         return 5.0
@@ -183,6 +223,16 @@ def extract_event(item: dict, use_zero_shot: bool = False) -> dict:
     official = bool(item.get("official_source", False))
     item_id = item.get("item_id", "")
 
+    # Use the pre-computed embedding blob if the pipeline fetched it
+    item_embedding: Optional[np.ndarray] = None
+    raw_emb = item.get("embedding")
+    if raw_emb is not None:
+        try:
+            from src.processing.embeddings import from_bytes
+            item_embedding = from_bytes(raw_emb)
+        except Exception:
+            pass
+
     kw_scores = _keyword_score(text)
     event_type, kw_conf = _top_event(kw_scores)
     confidence = min(1.0, kw_conf * 5)
@@ -220,7 +270,7 @@ def extract_event(item: dict, use_zero_shot: bool = False) -> dict:
         "competitor": brand,
         "event_type": event_type,
         "business_function": BUSINESS_FUNCTION_MAP.get(event_type, "other"),
-        "relevance_score": _relevance_score(text, brand),
+        "relevance_score": _relevance_score(text, brand, item_embedding),
         "impact_score": _impact_score(source_name, kw_conf, official),
         "summary": summary,
         "evidence_snippet": _evidence_snippet(text, event_type),

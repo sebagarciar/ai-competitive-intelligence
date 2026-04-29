@@ -15,10 +15,10 @@ date: 2026-04-29
 ### A. Results / Output quality (highest leverage for an MBA grade)
 
 1. **Sentiment is computed but never used.** `src/processing/sentiment.py` runs Twitter-RoBERTa on every item, but the score never reaches the brief, the trends formula, or the dashboard. This is the single biggest "free win": surface it, weight trend scores by it, show sentiment-flipped brands as alerts. — **DONE**
-2. **Brief is a Jinja template with no synthesis.** `src/output/brief.py` `_build_implications` (lines 113–154) is generic rules ("brand X is silent", "brand Y dominates"). The brief lists items rather than telling a story. Even a small local LLM (or Claude API in a one-off) could turn the top events into 3 strategic paragraphs per brand.
-3. **Event classification is ~80% keyword scoring**, only falling through to the zero-shot model when confidence < 0.35 (`extractor.py:157–196`). Flipping the default — zero-shot first, keywords as a cheap pre-filter — would raise classification quality and is defensible in the writeup.
-4. **"Relevance score" = brand-mention count** (`extractor.py:112–120`). That's not relevance, that's frequency. A semantic similarity score against a per-brand reference embedding would be more honest and more accurate.
-5. **Trend formula weights are hardcoded** (`trends.py:86–89`: 0.5/0.3/0.2). No ablation, no justification. For an MBA project, a one-page "we tried weights X/Y/Z and chose this because…" justifies the choice.
+2. **Brief is a Jinja template with no synthesis.** `src/output/brief.py` `_build_implications` (lines 113–154) is generic rules ("brand X is silent", "brand Y dominates"). The brief lists items rather than telling a story. Even a small local LLM (or Claude API in a one-off) could turn the top events into 3 strategic paragraphs per brand. — **DONE** (via Ollama llama3.1:8b, see Part 2 #1)
+3. **Event classification is ~80% keyword scoring**, only falling through to the zero-shot model when confidence < 0.35 (`extractor.py:157–196`). Flipping the default — zero-shot first, keywords as a cheap pre-filter — would raise classification quality and is defensible in the writeup. — **DONE**
+4. **"Relevance score" = brand-mention count** (`extractor.py:112–120`). That's not relevance, that's frequency. A semantic similarity score against a per-brand reference embedding would be more honest and more accurate. — **DONE**
+5. **Trend formula weights are hardcoded** (`trends.py:86–89`: 0.5/0.3/0.2). No ablation, no justification. For an MBA project, a one-page "we tried weights X/Y/Z and chose this because…" justifies the choice. — **DONE**
 
 ### B. Dashboard / presentation
 
@@ -46,13 +46,13 @@ Pick 1–2 of these. Each is defensible as a "real ML contribution" in the write
 
 1. (ALREADY DONE) **LLM-powered strategic synthesis in the brief.**
 
-2. **Fine-tune a small classifier on your event taxonomy.** Manually label ~150 articles with the 8 event types (you've already started in `notebooks/evaluation.ipynb`), then fine-tune a DistilBERT or use scikit-learn LogisticRegression on top of your existing embeddings. *Why it's good:* this is the "we replaced heuristics with a learned model" story every business-school ML project wants. Compare keyword-baseline F1 vs learned-model F1 in the writeup. — **DONE**
+2. (ALREADY DONE)  **Fine-tune a small classifier on your event taxonomy.** 
 
 3. **Anomaly detection for trends, not a hand-tuned formula.** Replace the weighted-sum trend score with `IsolationForest` or `LocalOutlierFactor` on (burst_z, source_count, sentiment_delta, impact). Frame it as "the model finds outliers; we don't have to guess weights." Ablation against the current formula is your evaluation.
 
 ### Tier 2 — Strong project-fit, lighter lift
 
-4. **Semantic search over the corpus.** You already have 384-dim embeddings stored. Add a Streamlit search box → cosine-rank items → show top 10. One afternoon of work, very demoable. — **DONE**
+4. (ALREADY DONE) **Semantic search over the corpus.** 
 
 5. **Topic modeling beyond DBSCAN labels.** The current cluster "themes" are stopword-filtered top keywords (`clustering.py`). Replace with BERTopic or a c-TF-IDF over the cluster — produces real topic labels like *"sustainability sourcing controversy"* instead of *"chanel report water"*.
 
