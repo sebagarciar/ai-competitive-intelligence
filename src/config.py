@@ -34,3 +34,21 @@ CRITICAL_IMPACT_THRESHOLD: float = _float("CRITICAL_IMPACT_THRESHOLD", 2.3)
 TREND_WEIGHT_BURST: float = _float("TREND_WEIGHT_BURST", 0.5)
 TREND_WEIGHT_SOURCES: float = _float("TREND_WEIGHT_SOURCES", 0.3)
 TREND_WEIGHT_IMPACT: float = _float("TREND_WEIGHT_IMPACT", 0.2)
+
+
+def _bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+# --- LLM-based brief synthesis (Ollama, local) ---
+# Set LLM_SYNTHESIS_ENABLED=0 (or pass --no-llm to the pipeline) to fall back
+# to the deterministic rule-based implications.
+LLM_SYNTHESIS_ENABLED: bool = _bool("LLM_SYNTHESIS_ENABLED", True)
+OLLAMA_HOST: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_TEMPERATURE: float = _float("OLLAMA_TEMPERATURE", 0.3)
+OLLAMA_TIMEOUT: int = _int("OLLAMA_TIMEOUT", 60)
+OLLAMA_SEED: int = _int("OLLAMA_SEED", 42)

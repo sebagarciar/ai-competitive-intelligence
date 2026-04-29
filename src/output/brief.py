@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from jinja2 import Environment, BaseLoader
 from src.db import get_recent_items, get_latest_trends, get_connection
+from src.output.llm_synthesis import synthesize_implications
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "data" / "briefs"
 
@@ -79,12 +80,24 @@ _No critical single-event signals this period._
 
 ## Strategic Implications
 
+{% if synthesis_by_brand %}
+{% for brand in brands %}
+{% if synthesis_by_brand.get(brand) %}
+### {{ brand }}
+
+{{ synthesis_by_brand[brand] }}
+
+{% endif %}
+{% endfor %}
+_Synthesis generated locally by {{ synthesis_model }}._
+{% else %}
 {% for implication in implications %}
 - {{ implication }}
 {% endfor %}
 {% if not implications %}
 - Monitor Dior and Gucci for collection launch activity heading into next fashion week.
 - Chanel's official communications remain the highest-confidence signal source.
+{% endif %}
 {% endif %}
 
 ---
@@ -154,9 +167,10 @@ def _build_implications(events_by_brand: dict, trends: list[dict]) -> list[str]:
     return implications
 
 
-def generate_brief() -> str:
+def generate_brief(use_llm: bool = True) -> str:
     now = datetime.now(timezone.utc)
     generated_at = now.strftime("%Y-%m-%d %H:%M UTC")
+    brief_date = now.strftime("%Y-%m-%d")
 
     recent = get_recent_items(days=30)
     trends = get_latest_trends(limit=30)
@@ -207,6 +221,26 @@ def generate_brief() -> str:
 
     implications = _build_implications(events_by_brand, trends)
 
+    # Per-brand LLM synthesis (graceful fallback if Ollama unreachable or disabled)
+    synthesis_by_brand: dict[str, str] = {}
+    synthesis_model = ""
+    if use_llm:
+        from src import config as _cfg
+        synthesis_model = _cfg.OLLAMA_MODEL
+        for brand in brands:
+            print(f"[Brief] Synthesizing implications for {brand}…")
+            text = synthesize_implications(
+                brand=brand,
+                events=events_by_brand.get(brand, []),
+                trends=trends,
+                brief_date=brief_date,
+            )
+            if text:
+                synthesis_by_brand[brand] = text
+        if not synthesis_by_brand:
+            print("[Brief] LLM synthesis unavailable — using rule-based implications.")
+            synthesis_model = ""
+
     env = Environment(loader=BaseLoader(), trim_blocks=True, lstrip_blocks=True)
     template = env.from_string(BRIEF_TEMPLATE)
     brief_md = template.render(
@@ -217,6 +251,8 @@ def generate_brief() -> str:
         emerging_trends=emerging_trends[:10],
         critical_events=critical_events,
         implications=implications,
+        synthesis_by_brand=synthesis_by_brand,
+        synthesis_model=synthesis_model,
         source_counts=source_counts,
         recent_events=unique_items,
     )

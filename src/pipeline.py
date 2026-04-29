@@ -160,7 +160,7 @@ def extract() -> None:
     print(f"[Pipeline] Extracted events for {len(items)} items")
 
 
-def run_pipeline(skip_ingest: bool = False) -> None:
+def run_pipeline(skip_ingest: bool = False, use_llm: bool = True) -> None:
     print("=" * 60)
     print("AI Competitive Intelligence Copilot — Pipeline Run")
     print("=" * 60)
@@ -177,7 +177,7 @@ def run_pipeline(skip_ingest: bool = False) -> None:
     extract()
     run_clustering()
     detect_trends()
-    brief = generate_brief()
+    brief = generate_brief(use_llm=use_llm)
 
     print("\n" + "=" * 60)
     print("Pipeline complete. Brief preview (first 500 chars):")
@@ -188,5 +188,6 @@ def run_pipeline(skip_ingest: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the intelligence pipeline")
     parser.add_argument("--skip-ingest", action="store_true", help="Skip ingestion step")
+    parser.add_argument("--no-llm", action="store_true", help="Skip LLM-based brief synthesis (use rule-based implications)")
     args = parser.parse_args()
-    run_pipeline(skip_ingest=args.skip_ingest)
+    run_pipeline(skip_ingest=args.skip_ingest, use_llm=not args.no_llm)

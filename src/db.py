@@ -83,6 +83,18 @@ def init_db() -> None:
                 detected_at     TEXT DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS brief_synthesis_cache (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                brand           TEXT NOT NULL,
+                brief_date      TEXT,
+                model           TEXT NOT NULL,
+                prompt_hash     TEXT NOT NULL,
+                output          TEXT NOT NULL,
+                created_at      TEXT DEFAULT (datetime('now')),
+                UNIQUE(brand, prompt_hash)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_synth_lookup ON brief_synthesis_cache(brand, prompt_hash);
             CREATE INDEX IF NOT EXISTS idx_items_competitor ON items(competitor);
             CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at);
             CREATE INDEX IF NOT EXISTS idx_events_competitor ON events(competitor);
@@ -295,6 +307,27 @@ def get_latest_trends(limit: int = 20) -> list[dict]:
 def clear_trends() -> None:
     with db() as conn:
         conn.execute("DELETE FROM trends")
+
+
+# --- Brief synthesis cache helpers ---
+
+def get_cached_synthesis(brand: str, prompt_hash: str) -> str | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT output FROM brief_synthesis_cache WHERE brand = ? AND prompt_hash = ?",
+            (brand, prompt_hash),
+        ).fetchone()
+        return row["output"] if row else None
+
+
+def cache_synthesis(brand: str, brief_date: str, model: str, prompt_hash: str, output: str) -> None:
+    with db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO brief_synthesis_cache
+               (brand, brief_date, model, prompt_hash, output)
+               VALUES (?, ?, ?, ?, ?)""",
+            (brand, brief_date, model, prompt_hash, output),
+        )
 
 
 if __name__ == "__main__":
