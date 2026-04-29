@@ -8,8 +8,30 @@ Two-step approach:
 """
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
-from src.config import KEYWORD_CONFIDENCE_THRESHOLD
+from src.config import KEYWORD_CONFIDENCE_THRESHOLD, USE_TRAINED_CLASSIFIER
+
+_CLASSIFIER_PATH = Path(__file__).parent.parent.parent / "data" / "event_classifier.joblib"
+_trained_clf = None
+_trained_le = None
+
+
+def _load_trained_classifier():
+    global _trained_clf, _trained_le
+    if _trained_clf is not None:
+        return _trained_clf, _trained_le
+    if not _CLASSIFIER_PATH.exists():
+        return None, None
+    try:
+        import joblib
+        bundle = joblib.load(_CLASSIFIER_PATH)
+        _trained_clf = bundle["model"]
+        _trained_le = bundle["label_encoder"]
+        print(f"[Extractor] Loaded trained classifier from {_CLASSIFIER_PATH}")
+    except Exception as e:
+        print(f"[Extractor] Could not load trained classifier: {e}")
+    return _trained_clf, _trained_le
 
 # ---------------------------------------------------------------------------
 # Event taxonomy
@@ -163,18 +185,29 @@ def extract_event(item: dict, use_zero_shot: bool = False) -> dict:
 
     kw_scores = _keyword_score(text)
     event_type, kw_conf = _top_event(kw_scores)
+    confidence = min(1.0, kw_conf * 5)
 
-    if use_zero_shot and kw_conf < KEYWORD_CONFIDENCE_THRESHOLD:
+    # Try trained classifier first when enabled
+    if USE_TRAINED_CLASSIFIER:
+        clf, le = _load_trained_classifier()
+        if clf is not None:
+            try:
+                from src.processing.embeddings import embed_text
+                emb = embed_text(text).reshape(1, -1)
+                proba = clf.predict_proba(emb)[0]
+                pred_idx = int(proba.argmax())
+                event_type = le.inverse_transform([pred_idx])[0]
+                confidence = float(proba[pred_idx])
+            except Exception as e:
+                print(f"[Extractor] Trained classifier failed: {e}")
+    elif use_zero_shot and kw_conf < KEYWORD_CONFIDENCE_THRESHOLD:
         try:
             event_type, confidence = _zero_shot_classify(text)
         except Exception as e:
             print(f"[Extractor] Zero-shot failed: {e}")
-            confidence = kw_conf
-    else:
-        confidence = min(1.0, kw_conf * 5)  # scale to [0,1] rough approximation
 
     # Fallback: if no keyword hit at all, mark unknown
-    if kw_conf == 0.0:
+    if kw_conf == 0.0 and not USE_TRAINED_CLASSIFIER:
         event_type = "collection_launch"
         confidence = 0.1
 

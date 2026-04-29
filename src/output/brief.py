@@ -159,6 +159,38 @@ def _build_implications(events_by_brand: dict, trends: list[dict]) -> list[str]:
             f"⚠ {brand} has reputational signals that warrant monitoring this week."
         )
 
+    # Sentiment-based signals: use avg_sentiment from trends when available
+    brand_sentiments: dict[str, list[float]] = {b: [] for b in brands}
+    for t in trends:
+        s = t.get("avg_sentiment")
+        if s is not None and t["competitor"] in brand_sentiments:
+            brand_sentiments[t["competitor"]].append(s)
+
+    # Fall back to per-event sentiment if no trend-level data
+    for brand, evlist in events_by_brand.items():
+        if not brand_sentiments[brand]:
+            scores = [ev["sentiment_score"] for ev in evlist if ev.get("sentiment_score") is not None]
+            brand_sentiments[brand] = scores
+
+    brand_avg_sentiment = {
+        b: sum(scores) / len(scores)
+        for b, scores in brand_sentiments.items()
+        if scores
+    }
+
+    for brand, avg_s in brand_avg_sentiment.items():
+        if avg_s < -0.2:
+            implications.append(
+                f"⚠ {brand} faces a reputational headwind: average media sentiment is negative "
+                f"({avg_s:+.2f}). Monitor for escalating coverage."
+            )
+        elif avg_s > 0.4:
+            others = [b for b in brands if b != brand]
+            implications.append(
+                f"{brand} leads in positive share-of-voice this week (avg sentiment {avg_s:+.2f}), "
+                f"outpacing {' and '.join(others)} in favorable coverage."
+            )
+
     if not implications:
         implications.append(
             "Activity is broadly distributed — no single brand dominates the signal landscape this period."

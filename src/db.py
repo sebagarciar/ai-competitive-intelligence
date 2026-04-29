@@ -111,6 +111,9 @@ def init_db() -> None:
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
+        existing_trends = {row[1] for row in conn.execute("PRAGMA table_info(trends)")}
+        if "avg_sentiment" not in existing_trends:
+            conn.execute("ALTER TABLE trends ADD COLUMN avg_sentiment REAL")
         # Create sentiment index only after column is guaranteed to exist
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_sentiment ON items(sentiment_score)"
@@ -258,7 +261,7 @@ def update_event_cluster(event_id: str, cluster_id: int) -> None:
 def get_events_for_trends(days: int = 35) -> list[dict]:
     with db() as conn:
         rows = conn.execute("""
-            SELECT e.*, i.published_at, i.official_source, i.source_name
+            SELECT e.*, i.published_at, i.official_source, i.source_name, i.sentiment_score
             FROM events e
             JOIN items i ON e.item_id = i.item_id
             WHERE i.published_at >= datetime('now', ?)
@@ -275,8 +278,8 @@ def insert_trend(trend: dict) -> str:
             INSERT INTO trends
                 (trend_id, competitor, event_type, cluster_id, count_7d,
                  mean_prev_28d, std_prev_28d, unique_sources, avg_impact,
-                 burst_z, trend_score, is_critical)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 burst_z, trend_score, is_critical, avg_sentiment)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             trend_id,
             trend["competitor"],
@@ -290,6 +293,7 @@ def insert_trend(trend: dict) -> str:
             trend["burst_z"],
             trend["trend_score"],
             int(trend.get("is_critical", False)),
+            trend.get("avg_sentiment"),
         ))
     return trend_id
 

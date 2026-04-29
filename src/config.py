@@ -30,10 +30,11 @@ TREND_SCORE_THRESHOLD: float = _float("TREND_SCORE_THRESHOLD", 0.3)
 MIN_UNIQUE_SOURCES: int = _int("MIN_UNIQUE_SOURCES", 1)
 CRITICAL_IMPACT_THRESHOLD: float = _float("CRITICAL_IMPACT_THRESHOLD", 2.3)
 
-# Trend score formula weights: score = W_BURST*burst_z + W_SOURCES*log(1+sources) + W_IMPACT*(impact/5)
-TREND_WEIGHT_BURST: float = _float("TREND_WEIGHT_BURST", 0.5)
-TREND_WEIGHT_SOURCES: float = _float("TREND_WEIGHT_SOURCES", 0.3)
-TREND_WEIGHT_IMPACT: float = _float("TREND_WEIGHT_IMPACT", 0.2)
+# Trend score formula weights: score = W_BURST*burst_z + W_SOURCES*log(1+sources) + W_IMPACT*(impact/5) + W_SENTIMENT*avg_sentiment
+TREND_WEIGHT_BURST: float = _float("TREND_WEIGHT_BURST", 0.45)
+TREND_WEIGHT_SOURCES: float = _float("TREND_WEIGHT_SOURCES", 0.27)
+TREND_WEIGHT_IMPACT: float = _float("TREND_WEIGHT_IMPACT", 0.18)
+TREND_WEIGHT_SENTIMENT: float = _float("TREND_WEIGHT_SENTIMENT", 0.10)
 
 
 def _bool(key: str, default: bool) -> bool:
@@ -42,6 +43,11 @@ def _bool(key: str, default: bool) -> bool:
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
+
+# --- Trained event classifier ---
+# Set USE_TRAINED_CLASSIFIER=1 after running the fine-tuning notebook to use the
+# LogisticRegression model from data/event_classifier.joblib instead of keyword scoring.
+USE_TRAINED_CLASSIFIER: bool = _bool("USE_TRAINED_CLASSIFIER", False)
 
 # --- LLM-based brief synthesis (Ollama, local) ---
 # Set LLM_SYNTHESIS_ENABLED=0 (or pass --no-llm to the pipeline) to fall back

@@ -18,7 +18,7 @@ python -m src.pipeline --skip-ingest
 # Skip local LLM synthesis (use deterministic rule-based implications instead)
 python -m src.pipeline --no-llm
 
-# Launch Streamlit dashboard (4 tabs: events, trends, brief, sources)
+# Launch Streamlit dashboard (7 tabs: digest, trends, perception, brief, sources, event feed, search)
 streamlit run dashboard/app.py
 
 # Initialize database manually
@@ -40,14 +40,14 @@ The pipeline orchestrates seven sequential stages:
 5. **Deduplicate** — Semantic deduplication using cosine similarity (threshold: 0.92).
 6. **Extract** (`extract()`) — Event classification using keyword scoring; zero-shot classifier is optional fallback (`use_zero_shot=False` by default).
 7. **Cluster** (`run_clustering()`) — DBSCAN on embeddings to discover semantic themes.
-8. **Trends** (`detect_trends()`) — Burst detection formula: `trend_score = 0.5*burst_z + 0.3*log(1+sources) + 0.2*(impact/5)`. Flags Critical Events (single high-impact article from official source).
+8. **Trends** (`detect_trends()`) — Burst detection formula: `trend_score = 0.45*burst_z + 0.27*log(1+sources) + 0.18*(impact/5) + 0.10*avg_sentiment`. Flags Critical Events (single high-impact article from official source). `avg_sentiment` is persisted in the trends table.
 9. **Brief** (`generate_brief()`) — Jinja2 template rendering. Saves to `data/briefs/brief_YYYYMMDD.md`.
 
 ### Database Schema (`src/db.py`)
 SQLite with WAL mode (`intelligence.db`):
 - **items** — Raw articles with embeddings (BLOB), translations, metadata
 - **events** — Classified events linked to items (event_type, impact_score, relevance_score, cluster_id)
-- **trends** — Detected trends with burst statistics (trend_score, is_critical flag)
+- **trends** — Detected trends with burst statistics (trend_score, is_critical flag, avg_sentiment)
 
 Critical: The DB uses foreign keys (`PRAGMA foreign_keys=ON`). Events reference items via `item_id`.
 
@@ -72,11 +72,14 @@ Social adapters (Reddit, Bluesky, Grok) share a **query planner** (`src/ingestio
 - All adapters accept `fetch_all(simple: bool = False)` and return items in the standard schema
 
 ### Dashboard (`dashboard/app.py`)
-Streamlit app with 4 tabs:
-1. Event Table — Filterable feed with evidence snippets
-2. Trend Visualization — Bar/scatter charts using Plotly, brand color mapping
-3. Weekly Brief — Markdown render of latest brief
-4. Source Coverage — Pie/bar charts for source attribution
+Streamlit app with 7 tabs:
+1. **Digest** — Top stories and critical event highlights
+2. **Trends** — Bar/scatter charts + 14-day signal volume time-series per brand
+3. **Perception** — Sentiment charts (avg per brand, distribution, positive/negative lists)
+4. **Weekly Brief** — Markdown render of latest brief
+5. **Source Coverage** — Pie/bar charts for source attribution
+6. **Event Feed** — Filterable full event table with sentiment badges
+7. **Search** — Semantic search over the full corpus (cosine similarity on stored embeddings, top-10 results)
 
 The dashboard caches data queries with TTL=300s. "Run Pipeline Now" button triggers full pipeline and clears cache.
 
@@ -85,7 +88,7 @@ The dashboard caches data queries with TTL=300s. "Run Pipeline Now" button trigg
 - **No paid LLM APIs**: All ML uses local models (sentence-transformers, transformers). Translation uses free Google Translate tier. Optional paid sources (Webhose, xAI) are gracefully skipped when keys are absent.
 - **Embedding model**: `all-MiniLM-L6-v2` loaded lazily on first use via global singleton in `src/processing/embeddings.py`. Model name is stored alongside each embedding BLOB (`embedding_model` column); use `get_items_with_stale_embeddings(current_model)` to detect rows that need re-embedding after a model swap.
 - **Deduplication**: URL exact-match happens during ingestion; semantic dedup at 0.92 cosine threshold happens post-embedding.
-- **Tuning constants**: All ML/analysis thresholds live in `src/config.py` and can be overridden via environment variables (e.g. `DBSCAN_EPS=0.3 python -m src.pipeline`). Current defaults: `TREND_SCORE_THRESHOLD=0.3`, `MIN_UNIQUE_SOURCES=1`, `CRITICAL_IMPACT_THRESHOLD=3.5`, `SEMANTIC_SIMILARITY_THRESHOLD=0.92`, `DBSCAN_EPS=0.25`.
+- **Tuning constants**: All ML/analysis thresholds live in `src/config.py` and can be overridden via environment variables (e.g. `DBSCAN_EPS=0.3 python -m src.pipeline`). Current defaults: `TREND_SCORE_THRESHOLD=0.3`, `MIN_UNIQUE_SOURCES=1`, `CRITICAL_IMPACT_THRESHOLD=3.5`, `SEMANTIC_SIMILARITY_THRESHOLD=0.92`, `DBSCAN_EPS=0.25`. Trend formula weights: `TREND_WEIGHT_BURST=0.45`, `TREND_WEIGHT_SOURCES=0.27`, `TREND_WEIGHT_IMPACT=0.18`, `TREND_WEIGHT_SENTIMENT=0.10`.
 - **Pipeline can run incrementally**: Use `--skip-ingest` to reprocess existing data. Each stage checks for missing data (e.g., `get_items_without_embeddings()`) to avoid redundant work.
 - **Brand colors** (used in dashboard): Chanel `#1a1a1a`, Dior `#b5936c`, Gucci `#5a7a4e`.
 - **Grok/xAI HTTP client**: `grok_search.py` uses `httpx` (not `requests`) for the xAI API call. If `httpx` is not installed, the adapter skips gracefully with a warning.
@@ -97,4 +100,4 @@ Metric functions live in `src/evaluation.py` (importable, testable):
 - `event_f1(y_true, y_pred)` — returns `{macro, weighted, report}` dict using sklearn
 - `trend_precision_at_k(labels, k=5)` — fraction of top-k trends judged valid
 
-`notebooks/evaluation.ipynb` imports from `src.evaluation` and provides the manual labeling workflow.
+`notebooks/evaluation.ipynb` imports from `src.evaluation` and provides the manual labeling workflow. The notebook also contains a classifier fine-tuning section: label ~150 events, train a `LogisticRegression` on the stored 384-dim embeddings, compare F1 vs keyword baseline, and save to `data/event_classifier.joblib`. Set `USE_TRAINED_CLASSIFIER=1` (env var) to activate it in the pipeline.

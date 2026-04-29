@@ -12,6 +12,7 @@ from src.config import (
     TREND_WEIGHT_BURST,
     TREND_WEIGHT_SOURCES,
     TREND_WEIGHT_IMPACT,
+    TREND_WEIGHT_SENTIMENT,
 )
 
 
@@ -80,12 +81,15 @@ def detect_trends() -> list[dict]:
         unique_sources = len({ev["source_name"] for ev in group})
         impact_scores = [ev["impact_score"] for ev in group if ev.get("impact_score")]
         avg_impact = sum(impact_scores) / len(impact_scores) if impact_scores else 0.0
+        sentiment_scores = [ev["sentiment_score"] for ev in group if ev.get("sentiment_score") is not None]
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
 
         burst_z = (count_7d - mean_prev_28d) / (std_prev_28d + 1)
         trend_score = (
             TREND_WEIGHT_BURST * burst_z
             + TREND_WEIGHT_SOURCES * math.log(1 + unique_sources)
             + TREND_WEIGHT_IMPACT * (avg_impact / 5)
+            + TREND_WEIGHT_SENTIMENT * avg_sentiment
         )
 
         has_official = any(ev.get("official_source") for ev in group)
@@ -114,6 +118,7 @@ def detect_trends() -> list[dict]:
             "std_prev_28d": round(std_prev_28d, 3),
             "unique_sources": unique_sources,
             "avg_impact": round(avg_impact, 2),
+            "avg_sentiment": round(avg_sentiment, 3),
             "burst_z": round(burst_z, 3),
             "trend_score": round(trend_score, 3),
             "is_critical": is_critical,

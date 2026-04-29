@@ -14,14 +14,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import numpy as np
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import mistune
 from datetime import datetime, timezone
-from src.db import init_db, get_connection, get_latest_trends
+from src.db import init_db, get_connection, get_latest_trends, get_all_items_with_embeddings
 from src.output.brief import generate_brief
+from src.processing.embeddings import embed_text, from_bytes
 
 # ──────────────────────────────────────────────
 # Page config
@@ -742,6 +744,26 @@ def load_events(days: int = 30, brands: list = None, event_types: list = None) -
 
 
 @st.cache_data(ttl=300)
+def load_corpus() -> list[dict]:
+    """Return all items with embeddings plus display fields for semantic search."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT i.item_id, i.competitor, i.title, i.excerpt, i.published_at,
+               i.source_name, i.source_url, i.embedding
+        FROM items i
+        WHERE i.embedding IS NOT NULL
+    """).fetchall()
+    conn.close()
+    corpus = []
+    for r in rows:
+        row = dict(r)
+        emb_bytes = row.pop("embedding")
+        row["embedding"] = from_bytes(emb_bytes)
+        corpus.append(row)
+    return corpus
+
+
+@st.cache_data(ttl=300)
 def load_trends() -> pd.DataFrame:
     conn = get_connection()
     df = pd.read_sql_query("SELECT * FROM trends ORDER BY trend_score DESC", conn)
@@ -932,13 +954,14 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_digest, tab_trends, tab_perception, tab_brief, tab_sources, tab_moves = st.tabs([
+tab_digest, tab_trends, tab_perception, tab_brief, tab_sources, tab_moves, tab_search = st.tabs([
     "Digest",
     "Trends",
     "Perception",
     "Weekly Brief",
     "Source Coverage",
     "Event Feed",
+    "Search",
 ])
 
 # ─── Tab 1: Digest ────────────────────────────────────────────
@@ -1244,6 +1267,38 @@ with tab_trends:
         fig_scatter.update_traces(marker=dict(line=dict(color="#1a1a1a", width=1)))
         st.plotly_chart(fig_scatter, use_container_width=True)
         st.markdown('<div style="font-size:0.78rem;color:#888;letter-spacing:0.04em;margin:-0.5rem 0 1rem;">Bubble = articles in last 7 days. Upper-right = high burst + high impact.</div>', unsafe_allow_html=True)
+
+        # Time-series: daily signal volume per brand over the last 14 days
+        if not df_events.empty and "published_at" in df_events.columns:
+            df_ts = df_events.copy()
+            df_ts["date"] = pd.to_datetime(df_ts["published_at"], errors="coerce").dt.normalize()
+            cutoff = pd.Timestamp.now(tz="UTC").normalize() - pd.Timedelta(days=14)
+            df_ts = df_ts[df_ts["date"] >= cutoff]
+            if not df_ts.empty:
+                daily = (
+                    df_ts.groupby(["date", "competitor"])["item_id"]
+                    .nunique()
+                    .reset_index(name="articles")
+                )
+                # Fill date gaps with 0 so lines are continuous
+                all_dates = pd.date_range(cutoff, pd.Timestamp.now(tz="UTC").normalize(), freq="D")
+                all_combos = pd.MultiIndex.from_product(
+                    [all_dates, daily["competitor"].unique()], names=["date", "competitor"]
+                )
+                daily = (
+                    daily.set_index(["date", "competitor"])
+                    .reindex(all_combos, fill_value=0)
+                    .reset_index()
+                )
+                fig_ts = px.line(
+                    daily, x="date", y="articles", color="competitor",
+                    labels={"date": "Date", "articles": "Articles", "competitor": "Brand"},
+                    color_discrete_map=CHART_BRANDS,
+                )
+                fig_ts.update_layout(height=320, **PLOTLY_DARK)
+                fig_ts.update_layout(title=dict(text="Signal Volume — Last 14 Days", x=0.01))
+                fig_ts.update_traces(line=dict(width=2))
+                st.plotly_chart(fig_ts, use_container_width=True)
 
         df_table = df_t[["competitor", "event_type_label", "trend_score", "count_7d",
                          "unique_sources", "avg_impact", "is_critical"]].copy()
@@ -1562,3 +1617,41 @@ with tab_sources:
                 source_detail.sort_values(["Category", "Articles"], ascending=[True, False]),
                 use_container_width=True, hide_index=True,
             )
+
+# ─── Tab 7: Search ────────────────────────────────────────────
+with tab_search:
+    st.markdown('<div class="cc-section-eyebrow">Corpus Retrieval</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cc-section-title">Semantic Search</div>', unsafe_allow_html=True)
+    st.markdown('<div class="cc-section-dek">Find articles by meaning, not just keywords. Powered by the same embeddings used for clustering.</div>', unsafe_allow_html=True)
+
+    query = st.text_input("Search the corpus…", placeholder='e.g. "Dior sustainability sourcing"')
+    if query:
+        with st.spinner("Searching…"):
+            corpus = load_corpus()
+        if not corpus:
+            st.markdown('<div style="color:#888;font-size:0.9rem;">No embeddings found. Run the pipeline first.</div>', unsafe_allow_html=True)
+        else:
+            q_emb = embed_text(query)
+            emb_matrix = np.stack([item["embedding"] for item in corpus])
+            scores = emb_matrix @ q_emb
+            top_idx = np.argsort(scores)[::-1][:10]
+            st.markdown(f"**Top {len(top_idx)} results** for _{query}_")
+            for rank, idx in enumerate(top_idx, 1):
+                item = corpus[int(idx)]
+                score = float(scores[idx])
+                date_str = (item.get("published_at") or "")[:10]
+                brand = item.get("competitor", "")
+                title = item.get("title") or "(no title)"
+                excerpt = item.get("excerpt") or ""
+                url = item.get("source_url", "")
+                source = item.get("source_name", "")
+                st.markdown(f"""
+<div style="border:1px solid #2a2a2a;border-radius:6px;padding:0.75rem 1rem;margin-bottom:0.5rem;">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem;">
+  <span style="font-weight:600;font-size:0.95rem;">{rank}. <a href="{url}" target="_blank" style="color:#c9a96e;text-decoration:none;">{title}</a></span>
+  <span style="font-size:0.78rem;color:#888;">score {score:.3f}</span>
+</div>
+<div style="font-size:0.8rem;color:#aaa;margin-bottom:0.3rem;">{brand} · {source} · {date_str}</div>
+<div style="font-size:0.85rem;color:#ccc;">{excerpt[:200]}{"…" if len(excerpt) > 200 else ""}</div>
+</div>
+""", unsafe_allow_html=True)
