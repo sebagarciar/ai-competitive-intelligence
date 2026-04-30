@@ -9,21 +9,67 @@ from src.processing.embeddings import from_bytes
 from src.config import DBSCAN_EPS as EPS, DBSCAN_MIN_SAMPLES as MIN_SAMPLES
 
 
-def _top_keywords(texts: list[str], n: int = 3) -> str:
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "is", "was", "are", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "that", "this", "these",
+    "those", "its", "their", "they", "it", "he", "she", "we", "you",
+    "by", "from", "as", "not", "but", "more", "also", "new", "brand",
+    "luxury", "fashion", "said", "says", "year", "week", "month",
+}
+
+
+def _ctfidf_keywords(cluster_texts: dict[int, list[str]], target_id: int, n: int = 4) -> str:
+    """
+    c-TF-IDF: terms are ranked by how distinctive they are to *this* cluster
+    versus all other clusters, rather than just raw frequency.
+    TF  = word count in cluster / total words in cluster
+    IDF = log(total_clusters / (1 + clusters_containing_word))
+    """
     import re
-    STOPWORDS = {
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-        "of", "with", "is", "was", "are", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "that", "this", "these",
-        "those", "its", "their", "they", "it", "he", "she", "we", "you",
-        "by", "from", "as", "not", "but", "more", "also", "new", "brand",
-        "luxury", "fashion",
+    import math
+
+    def tokenize(texts: list[str]) -> list[str]:
+        words = []
+        for t in texts:
+            words.extend(re.findall(r"\b[a-zA-Z]{4,}\b", t.lower()))
+        return [w for w in words if w not in _STOPWORDS]
+
+    cluster_word_lists: dict[int, list[str]] = {
+        cid: tokenize(texts) for cid, texts in cluster_texts.items()
     }
+    n_clusters = len(cluster_word_lists)
+    if n_clusters == 0:
+        return ""
+
+    # IDF: count how many clusters contain each word
+    word_in_clusters: Counter = Counter()
+    for words in cluster_word_lists.values():
+        for w in set(words):
+            word_in_clusters[w] += 1
+
+    target_words = cluster_word_lists.get(target_id, [])
+    if not target_words:
+        return ""
+
+    tf = Counter(target_words)
+    total = len(target_words)
+    scores: dict[str, float] = {}
+    for word, count in tf.items():
+        idf = math.log(n_clusters / (1 + word_in_clusters[word]))
+        scores[word] = (count / total) * idf
+
+    top = sorted(scores, key=lambda w: scores[w], reverse=True)[:n]
+    return " / ".join(top) if top else " / ".join(w for w, _ in Counter(target_words).most_common(n))
+
+
+def _top_keywords(texts: list[str], n: int = 3) -> str:
     words: list[str] = []
+    import re
     for text in texts:
         words.extend(re.findall(r"\b[a-zA-Z]{4,}\b", text.lower()))
-    freq = Counter(w for w in words if w not in STOPWORDS)
+    freq = Counter(w for w in words if w not in _STOPWORDS)
     return " / ".join(w for w, _ in freq.most_common(n))
 
 
@@ -87,4 +133,4 @@ def get_cluster_themes() -> dict[int, str]:
                 cluster_texts.setdefault(cid, []).append(text)
     conn.close()
 
-    return {cid: _top_keywords(texts) for cid, texts in cluster_texts.items()}
+    return {cid: _ctfidf_keywords(cluster_texts, cid) for cid in cluster_texts}

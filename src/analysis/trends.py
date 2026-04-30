@@ -1,7 +1,10 @@
 """
 Trend detection using the burst formula from the project spec.
+IsolationForest anomaly scores are computed across all candidate groups
+and stored alongside the hand-tuned trend_score.
 """
 import math
+import numpy as np
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from src.db import get_events_for_trends, insert_trend, clear_trends
@@ -109,7 +112,7 @@ def detect_trends() -> list[dict]:
             and (has_official or unique_sources >= 1)
         )
 
-        trend = {
+        trends.append({
             "competitor": competitor,
             "event_type": event_type,
             "cluster_id": cluster_id,
@@ -122,9 +125,33 @@ def detect_trends() -> list[dict]:
             "burst_z": round(burst_z, 3),
             "trend_score": round(trend_score, 3),
             "is_critical": is_critical,
-        }
+            # feature vector for anomaly detection (stored separately before normalisation)
+            "_features": [burst_z, math.log(1 + unique_sources), avg_impact / 5, avg_sentiment],
+        })
+
+    # ── IsolationForest anomaly scoring ──────────────────────
+    # Fit on the 4-dim feature space (burst_z, log_sources, impact/5, sentiment)
+    # across all qualifying trend groups. anomaly_score is in [-1, 0]: more negative = more anomalous.
+    if len(trends) >= 4:
+        try:
+            from sklearn.ensemble import IsolationForest
+            X = np.array([t["_features"] for t in trends], dtype=float)
+            iso = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+            raw_scores = iso.score_samples(X)  # lower = more anomalous
+            # Normalise to [0, 1] where 1 = most anomalous
+            lo, hi = raw_scores.min(), raw_scores.max()
+            span = hi - lo if hi > lo else 1.0
+            for trend, raw in zip(trends, raw_scores):
+                trend["anomaly_score"] = round(float((hi - raw) / span), 4)
+        except ImportError:
+            print("[Trends] sklearn not available; anomaly_score skipped")
+    else:
+        for trend in trends:
+            trend["anomaly_score"] = None
+
+    for trend in trends:
+        trend.pop("_features", None)
         insert_trend(trend)
-        trends.append(trend)
 
     print(f"[Trends] {len(trends)} trends detected")
     return trends

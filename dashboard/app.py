@@ -809,6 +809,51 @@ def load_x_posts(days: int = 30) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def load_brand_vectors() -> pd.DataFrame:
+    """
+    Compute weekly brand centroids from stored article embeddings.
+    Returns a DataFrame with columns: brand, week, centroid (numpy array),
+    plus a flat embedding stored as a list for caching compatibility.
+    """
+    from src.processing.embeddings import from_bytes
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT i.competitor, i.published_at, i.embedding
+        FROM items i
+        WHERE i.embedding IS NOT NULL AND i.competitor IS NOT NULL
+        ORDER BY i.published_at
+    """).fetchall()
+    conn.close()
+
+    records = []
+    for r in rows:
+        try:
+            emb = from_bytes(r["embedding"])
+            pub = pd.to_datetime(r["published_at"], errors="coerce", utc=True)
+            if pub is pd.NaT or emb is None:
+                continue
+            week = pub.to_period("W").start_time
+            records.append({"brand": r["competitor"], "week": week, "emb": emb})
+        except Exception:
+            continue
+
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+    # Compute centroid per (brand, week)
+    centroids = []
+    for (brand, week), grp in df.groupby(["brand", "week"]):
+        matrix = np.stack(grp["emb"].tolist())
+        centroid = matrix.mean(axis=0)
+        norm = np.linalg.norm(centroid)
+        if norm > 0:
+            centroid = centroid / norm
+        centroids.append({"brand": brand, "week": week, "centroid": centroid.tolist(), "n": len(grp)})
+    return pd.DataFrame(centroids)
+
+
+@st.cache_data(ttl=300)
 def load_brief() -> str:
     briefs_dir = Path(__file__).parent.parent / "data" / "briefs"
     files = sorted(briefs_dir.glob("*.md"), reverse=True)
@@ -1395,18 +1440,70 @@ with tab_trends:
                 fig_ts.update_traces(line=dict(width=2))
                 st.plotly_chart(fig_ts, use_container_width=True)
 
-        df_table = df_t[["competitor", "event_type_label", "trend_score", "count_7d",
-                         "unique_sources", "avg_impact", "is_critical"]].copy()
+        table_cols = ["competitor", "event_type_label", "trend_score", "count_7d",
+                      "unique_sources", "avg_impact", "is_critical"]
+        rename_map = {
+            "competitor": "Brand", "event_type_label": "Event Type",
+            "trend_score": "Score", "count_7d": "7d Articles",
+            "unique_sources": "Sources", "avg_impact": "Avg Impact",
+            "is_critical": "Status",
+        }
+        if "anomaly_score" in df_t.columns and df_t["anomaly_score"].notna().any():
+            table_cols.append("anomaly_score")
+            rename_map["anomaly_score"] = "Anomaly ↑"
+        df_table = df_t[table_cols].copy()
         df_table["is_critical"] = df_table["is_critical"].apply(lambda v: "● Critical" if v else "")
         st.dataframe(
-            df_table.rename(columns={
-                "competitor": "Brand", "event_type_label": "Event Type",
-                "trend_score": "Score", "count_7d": "7d Articles",
-                "unique_sources": "Sources", "avg_impact": "Avg Impact",
-                "is_critical": "Status",
-            }),
+            df_table.rename(columns=rename_map),
             use_container_width=True, hide_index=True,
         )
+        if "anomaly_score" in df_t.columns and df_t["anomaly_score"].notna().any():
+            st.markdown('<div style="font-size:0.78rem;color:#888;letter-spacing:0.04em;margin:-0.4rem 0 0.5rem;">Anomaly ↑ — IsolationForest score (0–1). Higher = more statistically unusual versus other trends.</div>', unsafe_allow_html=True)
+
+        # ── Trend drill-down ──────────────────────────────────────
+        st.markdown('<div class="cc-section-eyebrow" style="margin-top:1.5rem;">Drill Down</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.82rem;color:#888;margin-bottom:0.8rem;">Expand any trend to see the underlying articles driving the signal.</div>', unsafe_allow_html=True)
+
+        for _, trow in df_t.iterrows():
+            brand = trow["competitor"]
+            etype = trow["event_type"]
+            elabel = trow["event_type_label"]
+            score = trow["trend_score"]
+            critical_badge = " ● Critical" if trow.get("is_critical") else ""
+            expander_label = f"{brand} — {elabel}  (score {score:.2f}){critical_badge}"
+
+            if not df_events.empty:
+                mask = (df_events["competitor"] == brand) & (df_events["event_type"] == etype)
+                articles = df_events[mask].sort_values("impact_score", ascending=False).head(10)
+            else:
+                articles = pd.DataFrame()
+
+            with st.expander(expander_label):
+                if articles.empty:
+                    st.markdown("_No articles found for this trend in the current date window._")
+                else:
+                    for _, art in articles.iterrows():
+                        sent_label = art.get("sentiment_label") or ""
+                        sent_color = {"positive": "#5a7a4e", "negative": "#c0392b", "neutral": "#888"}.get(sent_label, "#888")
+                        impact = art.get("impact_score")
+                        impact_str = f"Impact {impact:.1f}" if impact else ""
+                        date_str = str(art.get("published_at", ""))[:10]
+                        source = art.get("source_name", "")
+                        url = art.get("source_url", "")
+                        title = art.get("title") or art.get("summary") or "Untitled"
+                        snippet = art.get("evidence_snippet") or ""
+
+                        title_md = f"[{title}]({url})" if url else title
+                        meta = " · ".join(filter(None, [date_str, source, impact_str]))
+                        sent_md = f'<span style="color:{sent_color};font-size:0.75rem;font-weight:600;">{sent_label.upper()}</span>' if sent_label else ""
+                        st.markdown(
+                            f'<div style="border-left:3px solid #e6e3da;padding:0.5rem 0.75rem;margin-bottom:0.6rem;">'
+                            f'<div style="font-size:0.88rem;font-weight:600;">{title_md}</div>'
+                            f'<div style="font-size:0.75rem;color:#888;margin:0.2rem 0;">{meta} {sent_md}</div>'
+                            f'<div style="font-size:0.8rem;color:#555;">{snippet}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
 
 # ─── Tab 4: Perception ───────────────────────────────────────
@@ -1750,6 +1847,111 @@ with tab_compare:
             fig_ir.update_traces(marker=dict(size=7, line=dict(color="#1a1a1a", width=0.5)))
             st.plotly_chart(fig_ir, use_container_width=True)
             st.markdown('<div style="font-size:0.78rem;color:#888;letter-spacing:0.04em;margin:-0.5rem 0 1rem;">Upper-right = high impact + on-topic. Each dot is one classified event.</div>', unsafe_allow_html=True)
+
+        # ── Row 6: Brand-similarity embeddings ──
+        st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
+        st.markdown('<div class="cc-section-eyebrow">Semantic Positioning</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-size:0.82rem;color:#888;margin-bottom:0.8rem;">'
+            'Weekly brand centroids derived from article embeddings. '
+            'Cosine similarity shows how closely brands\' narrative spaces overlap. '
+            'PCA projection reveals convergence or divergence over time.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        df_bv = load_brand_vectors()
+        if df_bv.empty:
+            st.markdown('<div style="color:#888;font-size:0.9rem;">No embeddings available yet. Run the pipeline first.</div>', unsafe_allow_html=True)
+        else:
+            bv_brands = sorted(df_bv["brand"].unique())
+            # ── Current-week similarity heatmap ──
+            latest_week = df_bv["week"].max()
+            latest_df = df_bv[df_bv["week"] == latest_week]
+            latest_map = {r["brand"]: np.array(r["centroid"]) for _, r in latest_df.iterrows()}
+            common_brands = [b for b in BRANDS if b in latest_map]
+            if len(common_brands) >= 2:
+                sim_matrix = np.zeros((len(common_brands), len(common_brands)))
+                for i, bi in enumerate(common_brands):
+                    for j, bj in enumerate(common_brands):
+                        sim_matrix[i, j] = float(np.dot(latest_map[bi], latest_map[bj]))
+                fig_hm = go.Figure(data=go.Heatmap(
+                    z=sim_matrix,
+                    x=common_brands, y=common_brands,
+                    colorscale="RdBu", zmid=0,
+                    text=[[f"{sim_matrix[i,j]:.3f}" for j in range(len(common_brands))]
+                          for i in range(len(common_brands))],
+                    texttemplate="%{text}",
+                    showscale=True,
+                ))
+                fig_hm.update_layout(height=300, **PLOTLY_DARK)
+                fig_hm.update_layout(title=dict(text=f"Brand Narrative Similarity — Week of {str(latest_week)[:10]}", x=0.01))
+                st.plotly_chart(fig_hm, use_container_width=True)
+                st.markdown('<div style="font-size:0.78rem;color:#888;margin:-0.5rem 0 0.5rem;">1.0 = identical narrative space. Values above 0.85 indicate converging brand positioning.</div>', unsafe_allow_html=True)
+
+            # ── Similarity over time ──
+            weeks = sorted(df_bv["week"].unique())
+            if len(weeks) >= 2 and len(common_brands) >= 2:
+                sim_rows = []
+                for w in weeks:
+                    w_df = df_bv[df_bv["week"] == w]
+                    w_map = {r["brand"]: np.array(r["centroid"]) for _, r in w_df.iterrows()}
+                    for i, bi in enumerate(common_brands):
+                        for bj in common_brands[i+1:]:
+                            if bi in w_map and bj in w_map:
+                                sim = float(np.dot(w_map[bi], w_map[bj]))
+                                sim_rows.append({"week": w, "pair": f"{bi} × {bj}", "similarity": sim})
+                if sim_rows:
+                    df_sim_ts = pd.DataFrame(sim_rows)
+                    fig_sim = px.line(
+                        df_sim_ts, x="week", y="similarity", color="pair",
+                        labels={"week": "Week", "similarity": "Cosine Similarity", "pair": "Brand Pair"},
+                        color_discrete_sequence=["#b5936c", "#5a7a4e", "#8a7a9e"],
+                    )
+                    fig_sim.update_layout(height=300, **PLOTLY_DARK)
+                    fig_sim.update_layout(title=dict(text="Narrative Similarity Over Time", x=0.01))
+                    fig_sim.update_traces(line=dict(width=2))
+                    fig_sim.update_yaxes(range=[0, 1])
+                    st.plotly_chart(fig_sim, use_container_width=True)
+
+            # ── PCA 2D trajectory ──
+            all_centroids = df_bv[df_bv["brand"].isin(BRANDS)].copy()
+            if len(all_centroids) >= 3:
+                try:
+                    from sklearn.decomposition import PCA
+                    matrix = np.stack(all_centroids["centroid"].tolist())
+                    pca = PCA(n_components=2, random_state=42)
+                    coords = pca.fit_transform(matrix)
+                    all_centroids = all_centroids.copy()
+                    all_centroids["PC1"] = coords[:, 0]
+                    all_centroids["PC2"] = coords[:, 1]
+                    all_centroids["week_str"] = all_centroids["week"].astype(str).str[:10]
+                    fig_pca = px.scatter(
+                        all_centroids, x="PC1", y="PC2",
+                        color="brand", text="week_str",
+                        labels={"PC1": f"PC1 ({pca.explained_variance_ratio_[0]:.0%})",
+                                "PC2": f"PC2 ({pca.explained_variance_ratio_[1]:.0%})",
+                                "brand": "Brand"},
+                        color_discrete_map=CHART_BRANDS,
+                    )
+                    # Connect dots per brand with lines
+                    for brand in all_centroids["brand"].unique():
+                        bd = all_centroids[all_centroids["brand"] == brand].sort_values("week")
+                        fig_pca.add_trace(go.Scatter(
+                            x=bd["PC1"], y=bd["PC2"],
+                            mode="lines",
+                            line=dict(color=CHART_BRANDS.get(brand, "#888"), width=1, dash="dot"),
+                            showlegend=False,
+                            hoverinfo="skip",
+                        ))
+                    fig_pca.update_traces(marker=dict(size=9, line=dict(color="#1a1a1a", width=0.5)),
+                                          textfont=dict(size=8, color="#888"), textposition="top center",
+                                          selector=dict(mode="markers+text"))
+                    fig_pca.update_layout(height=420, **PLOTLY_DARK)
+                    fig_pca.update_layout(title=dict(text="Brand Narrative Trajectory (PCA)", x=0.01))
+                    st.plotly_chart(fig_pca, use_container_width=True)
+                    st.markdown('<div style="font-size:0.78rem;color:#888;margin:-0.5rem 0 1rem;">Each point = one week\'s brand centroid. Dotted lines show the trajectory. Proximity = narrative overlap.</div>', unsafe_allow_html=True)
+                except Exception as e:
+                    st.caption(f"PCA unavailable: {e}")
 
 
 # ─── Tab 5: Weekly Brief (PDF-style) ─────────────────────────
