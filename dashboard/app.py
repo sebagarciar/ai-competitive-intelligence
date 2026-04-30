@@ -854,6 +854,8 @@ def _brief_to_pdf(markdown_text: str) -> bytes:
         text = _BOLD.sub(r"\1", text)
         text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
         text = re.sub(r"`([^`]+)`", r"\1", text)
+        text = text.replace("—", "--").replace("–", "-").replace("•", "-")
+        text = text.encode("latin-1", errors="replace").decode("latin-1")
         return text.strip()
 
     for line in markdown_text.splitlines():
@@ -866,12 +868,14 @@ def _brief_to_pdf(markdown_text: str) -> bytes:
             pdf.set_font("Helvetica", "B", 18)
             pdf.set_text_color(26, 26, 26)
             pdf.multi_cell(0, 9, _strip_md(m1.group(1)))
+            pdf.set_x(pdf.l_margin)
             pdf.ln(1)
         elif m2:
             pdf.ln(5)
             pdf.set_font("Helvetica", "B", 13)
             pdf.set_text_color(26, 26, 26)
             pdf.multi_cell(0, 7, _strip_md(m2.group(1)))
+            pdf.set_x(pdf.l_margin)
             pdf.set_draw_color(230, 227, 218)
             pdf.set_line_width(0.2)
             pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
@@ -881,6 +885,7 @@ def _brief_to_pdf(markdown_text: str) -> bytes:
             pdf.set_font("Helvetica", "I", 11)
             pdf.set_text_color(181, 147, 108)
             pdf.multi_cell(0, 6, _strip_md(m3.group(1)))
+            pdf.set_x(pdf.l_margin)
             pdf.ln(1)
         elif _HR.match(line.strip()):
             pdf.ln(2)
@@ -891,11 +896,13 @@ def _brief_to_pdf(markdown_text: str) -> bytes:
         elif line.strip().startswith(("- ", "* ")):
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(44, 44, 44)
-            pdf.multi_cell(0, 5.5, "  • " + _strip_md(line.strip()[2:]))
+            pdf.multi_cell(0, 5.5, "  - " + _strip_md(line.strip()[2:]))
+            pdf.set_x(pdf.l_margin)
         elif line.strip():
             pdf.set_font("Helvetica", "", 9.5)
             pdf.set_text_color(44, 44, 44)
             pdf.multi_cell(0, 5.5, _strip_md(line))
+            pdf.set_x(pdf.l_margin)
         else:
             pdf.ln(2)
 
@@ -1484,11 +1491,8 @@ with tab_perception:
                 hovertemplate="%{y}: %{x:.1f}%<extra>Negative</extra>",
             ))
             fig_div.add_vline(x=0, line_color="#e6e3da", line_width=1)
-            fig_div.update_layout(
-                barmode="relative", height=220,
-                title=dict(text="Sentiment Share-of-Voice by Brand", x=0.01),
-                **PLOTLY_DARK,
-            )
+            fig_div.update_layout(barmode="relative", height=220, **PLOTLY_DARK)
+            fig_div.update_layout(title=dict(text="Sentiment Share-of-Voice by Brand", x=0.01))
             fig_div.update_xaxes(title_text="← Negative  |  Positive →", ticksuffix="%")
             fig_div.update_yaxes(title_text="")
             st.plotly_chart(fig_div, use_container_width=True)
