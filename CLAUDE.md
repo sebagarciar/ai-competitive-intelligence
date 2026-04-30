@@ -75,15 +75,14 @@ Social adapters (Reddit, Bluesky, Grok) share a **query planner** (`src/ingestio
 - All adapters accept `fetch_all(simple: bool = False)` and return items in the standard schema
 
 ### Dashboard (`dashboard/app.py`)
-Streamlit app with 8 tabs:
+Streamlit app with 7 tabs:
 1. **Digest** — Top stories and critical event highlights
 2. **Trends** — Bar/scatter charts + 14-day signal volume time-series per brand
 3. **Perception** — Sentiment charts: avg per brand, distribution pie, diverging share-of-voice bar (positive/negative % per brand), positive/negative article lists
 4. **Compare** — Side-by-side competitor comparison: per-brand KPI cards, grouped and normalised event-mix bars, daily activity time-series with event-type filter, impact × relevance scatter
 5. **Weekly Brief** — Markdown render of latest brief + "Download PDF" button (generates styled A4 PDF via `fpdf2`)
-6. **Source Coverage** — Pie/bar charts for source attribution
-7. **Event Feed** — Filterable full event table with sentiment badges
-8. **Search** — Semantic search over the full corpus (cosine similarity on stored embeddings, top-10 results)
+6. **Event Feed** — Filterable full event table with sentiment badges
+7. **Search** — Semantic search over the full corpus (cosine similarity on stored embeddings, top-10 results)
 
 The dashboard caches data queries with TTL=300s. "Run Pipeline Now" button triggers full pipeline and clears cache.
 

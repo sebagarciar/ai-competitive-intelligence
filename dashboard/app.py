@@ -650,6 +650,11 @@ html, body, [class*="css"], .stApp, .stMarkdown, .stMarkdown p,
     color: #1a1a1a !important;
 }
 .stExpander { border: 1px solid #e6e3da !important; border-radius: 0 !important; background: #fff !important; }
+.stExpander [data-testid="stExpanderDetails"] { background: #fff !important; color: #1a1a1a !important; }
+.stExpander [data-testid="stExpanderDetails"] p,
+.stExpander [data-testid="stExpanderDetails"] span,
+.stExpander [data-testid="stExpanderDetails"] div { color: #1a1a1a !important; }
+.stExpander [data-testid="stExpanderDetails"] a { color: #1a1a1a !important; }
 [data-testid="stSidebar"] .stExpander { background: #242424 !important; border: 1px solid #333 !important; }
 [data-testid="stSidebar"] .stExpander summary,
 [data-testid="stSidebar"] .stExpander summary p,
@@ -1017,7 +1022,6 @@ if reload_clicked:
     st.session_state["filter_brands"] = BRANDS
     st.session_state["filter_types"] = EVENT_TYPES
     st.session_state["filter_days"] = 30
-    st.rerun()
 
 st.sidebar.markdown("<hr/>", unsafe_allow_html=True)
 
@@ -1093,13 +1097,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_digest, tab_trends, tab_perception, tab_compare, tab_brief, tab_sources, tab_moves, tab_search = st.tabs([
+tab_digest, tab_trends, tab_perception, tab_compare, tab_brief, tab_moves, tab_search = st.tabs([
     "Digest",
     "Trends",
     "Perception",
     "Compare",
     "Weekly Brief",
-    "Source Coverage",
     "Event Feed",
     "Search",
 ])
@@ -1497,10 +1500,10 @@ with tab_trends:
                         meta = " · ".join(filter(None, [date_str, source, impact_str]))
                         sent_md = f'<span style="color:{sent_color};font-size:0.75rem;font-weight:600;">{sent_label.upper()}</span>' if sent_label else ""
                         st.markdown(
-                            f'<div style="border-left:3px solid #e6e3da;padding:0.5rem 0.75rem;margin-bottom:0.6rem;">'
-                            f'<div style="font-size:0.88rem;font-weight:600;">{title_md}</div>'
-                            f'<div style="font-size:0.75rem;color:#888;margin:0.2rem 0;">{meta} {sent_md}</div>'
-                            f'<div style="font-size:0.8rem;color:#555;">{snippet}</div>'
+                            f'<div style="border-left:3px solid #c9a96e;padding:0.5rem 0.75rem;margin-bottom:0.6rem;background:#fafaf7;">'
+                            f'<div style="font-size:0.88rem;font-weight:600;color:#1a1a1a;">{title_md}</div>'
+                            f'<div style="font-size:0.75rem;color:#666;margin:0.2rem 0;">{meta} {sent_md}</div>'
+                            f'<div style="font-size:0.8rem;color:#444;">{snippet}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -1600,15 +1603,15 @@ with tab_perception:
                 for _, row in df_sent.nlargest(5, "sentiment_score").iterrows():
                     title = _esc(str(row['title'])[:120])
                     url = row.get("source_url", "")
-                    title_html = f'<a href="{url}" target="_blank">{title}</a>' if url else title
+                    title_link = f'<a href="{url}" target="_blank" style="color:#1a1a1a;text-decoration:none;border-bottom:1px solid #c9a96e;">{title}</a>' if url else f'<span style="color:#1a1a1a;">{title}</span>'
                     st.markdown(f"""
-<div class="cc-feed-item" style="grid-template-columns:60px 1fr; padding:0.85rem 0;">
-  <div class="cc-feed-meta"><div class="date" style="color:#5a8a5a;">{row['sentiment_score']:+.2f}</div></div>
-  <div class="cc-feed-body">
-    <span class="brand">{_esc(row['competitor'])}</span>
-    <h3 style="font-size:1rem !important;">{title_html}</h3>
-    <div class="source-line">{_esc(row['source_name'])}</div>
+<div style="border-left:3px solid #5a8a5a;padding:0.6rem 0.75rem;margin-bottom:0.5rem;background:#fafaf7;">
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+    <span style="font-family:JetBrains Mono,monospace;font-size:0.85rem;font-weight:700;color:#5a8a5a;">{row['sentiment_score']:+.2f}</span>
+    <span style="font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:#c9a96e;font-style:italic;">{_esc(row['competitor'])}</span>
   </div>
+  <div style="font-size:0.88rem;font-weight:600;line-height:1.35;margin-bottom:0.2rem;">{title_link}</div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;">{_esc(row['source_name'])}</div>
 </div>
 """, unsafe_allow_html=True)
             with col_neg:
@@ -1616,15 +1619,15 @@ with tab_perception:
                 for _, row in df_sent.nsmallest(5, "sentiment_score").iterrows():
                     title = _esc(str(row['title'])[:120])
                     url = row.get("source_url", "")
-                    title_html = f'<a href="{url}" target="_blank">{title}</a>' if url else title
+                    title_link = f'<a href="{url}" target="_blank" style="color:#1a1a1a;text-decoration:none;border-bottom:1px solid #b8463f;">{title}</a>' if url else f'<span style="color:#1a1a1a;">{title}</span>'
                     st.markdown(f"""
-<div class="cc-feed-item" style="grid-template-columns:60px 1fr; padding:0.85rem 0;">
-  <div class="cc-feed-meta"><div class="date" style="color:#b8463f;">{row['sentiment_score']:+.2f}</div></div>
-  <div class="cc-feed-body">
-    <span class="brand">{_esc(row['competitor'])}</span>
-    <h3 style="font-size:1rem !important;">{title_html}</h3>
-    <div class="source-line">{_esc(row['source_name'])}</div>
+<div style="border-left:3px solid #b8463f;padding:0.6rem 0.75rem;margin-bottom:0.5rem;background:#fafaf7;">
+  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+    <span style="font-family:JetBrains Mono,monospace;font-size:0.85rem;font-weight:700;color:#b8463f;">{row['sentiment_score']:+.2f}</span>
+    <span style="font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:#c9a96e;font-style:italic;">{_esc(row['competitor'])}</span>
   </div>
+  <div style="font-size:0.88rem;font-weight:600;line-height:1.35;margin-bottom:0.2rem;">{title_link}</div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;">{_esc(row['source_name'])}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1680,20 +1683,32 @@ with tab_perception:
         for r in filtered_rows:
             author = r["source_name"].replace("X - ", "")
             date_str = r["published_at"][:10] if r["published_at"] else ""
-            sent_emoji = SENTIMENT_EMOJI.get(r.get("sentiment_label") or "neutral", "—")
+            sent_label = r.get("sentiment_label") or "neutral"
             sent_score = r.get("sentiment_score")
-            sent_str = f"{sent_emoji} {sent_score:+.2f}" if sent_score is not None else sent_emoji
-            with st.container(border=True):
-                col_brand, col_author, col_date, col_sent = st.columns([1, 2, 1, 1])
-                col_brand.markdown(f'<span class="brand-badge" style="background:#1a1a1a;">{r["competitor"]}</span>', unsafe_allow_html=True)
-                col_author.markdown(f"**{author}**")
-                col_date.caption(date_str)
-                col_sent.caption(f"Sentiment: {sent_str}")
-                st.markdown(r["post_text"] or "_No text_")
-                link_col, eng_col = st.columns([3, 1])
-                if r.get("source_url"):
-                    link_col.markdown(f"[View on X]({r['source_url']})")
-                eng_col.caption(f"♥ {r['likes']}  &nbsp;  ↻ {r['retweets']}")
+            sent_color = {"positive": "#5a8a5a", "very_positive": "#3a6a3a", "negative": "#b8463f", "very_negative": "#8a2020"}.get(sent_label, "#888")
+            sent_str = f"{sent_score:+.2f}" if sent_score is not None else "—"
+            post_text = _esc(r["post_text"] or "")
+            brand_color = {"Chanel": "#1a1a1a", "Dior": "#b5936c", "Gucci": "#5a7a4e"}.get(r["competitor"], "#1a1a1a")
+            view_link = f'<a href="{r["source_url"]}" target="_blank" style="color:#888;font-size:0.7rem;font-family:JetBrains Mono,monospace;text-transform:uppercase;letter-spacing:0.1em;">View on X →</a>' if r.get("source_url") else ""
+            st.markdown(f"""
+<div style="border:1px solid #e6e3da;border-left:3px solid {brand_color};padding:0.85rem 1rem;margin-bottom:0.6rem;background:#ffffff;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+    <div style="display:flex;align-items:center;gap:0.6rem;">
+      <span style="background:{brand_color};color:#fff;font-family:JetBrains Mono,monospace;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;padding:2px 8px;">{_esc(r['competitor'])}</span>
+      <span style="font-weight:600;font-size:0.85rem;color:#1a1a1a;">@{_esc(author)}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      <span style="font-family:JetBrains Mono,monospace;font-size:0.72rem;color:{sent_color};font-weight:600;">{sent_label.upper()} {sent_str}</span>
+      <span style="font-family:JetBrains Mono,monospace;font-size:0.68rem;color:#888;">{date_str}</span>
+    </div>
+  </div>
+  <div style="font-size:0.9rem;color:#1a1a1a;line-height:1.5;margin-bottom:0.5rem;">{post_text}</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div>{view_link}</div>
+    <div style="font-family:JetBrains Mono,monospace;font-size:0.7rem;color:#888;">♥ {r['likes']} &nbsp; ↻ {r['retweets']}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     if not df_events.empty:
         df_social = df_events[df_events["source_type"] == "social_media"].copy()
@@ -1998,87 +2013,6 @@ with tab_brief:
 </div>
 """, unsafe_allow_html=True)
 
-
-# ─── Tab 6: Source Coverage ──────────────────────────────────
-with tab_sources:
-    st.markdown('<div class="cc-section-eyebrow">Provenance</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cc-section-title">Source Coverage</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cc-section-dek">Where the intelligence comes from — by category, brand, and individual outlet.</div>', unsafe_allow_html=True)
-
-    if df_events.empty:
-        st.markdown('<div style="color:#888;font-size:0.9rem;">No data available.</div>', unsafe_allow_html=True)
-    else:
-        def _source_category(name: str) -> str:
-            n = str(name)
-            if any(n.startswith(p) for p in ("Bluesky -", "Reddit -", "X - ")):
-                return "Social Media"
-            if "Official" in n or n in ("Chanel Official", "Dior Official", "Gucci Official"):
-                return "Brand Sites"
-            if n == "GDELT":
-                return "News Aggregator"
-            if n in ("Bloomberg Markets",):
-                return "Financial Press"
-            if n.startswith("YouTube"):
-                return "YouTube"
-            return "Trade Press"
-
-        df_cov = df_events.copy()
-        df_cov["category"] = df_cov["source_name"].apply(_source_category)
-
-        CATEGORY_COLORS = {
-            "Trade Press": "#c9a96e", "Social Media": "#a87b5c",
-            "News Aggregator": "#7a8a5a", "Financial Press": "#5a8a8a",
-            "Brand Sites": "#8a5a8a", "YouTube": "#b8463f",
-        }
-
-        col_pie, col_bar = st.columns(2)
-        with col_pie:
-            cat_counts = df_cov.groupby("category")["item_id"].nunique().reset_index()
-            cat_counts.columns = ["Category", "Articles"]
-            fig_pie = px.pie(
-                cat_counts, names="Category", values="Articles", hole=0.5,
-                color="Category", color_discrete_map=CATEGORY_COLORS,
-            )
-            fig_pie.update_traces(textposition="outside",
-                                  texttemplate="%{label}<br>%{percent:.0%}",
-                                  textfont=dict(color="#e8e6df"),
-                                  marker=dict(line=dict(color="#1a1a1a", width=2)))
-            fig_pie.update_layout(height=380, **PLOTLY_DARK)
-            fig_pie.update_layout(
-                title=dict(text="By Source Category", x=0.01),
-                margin=dict(l=80, r=80, t=50, b=50),
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-        with col_bar:
-            brand_cat = df_cov.groupby(["category", "competitor"])["item_id"].nunique().reset_index()
-            brand_cat.columns = ["Category", "Brand", "Articles"]
-            fig_brand_cat = px.bar(
-                brand_cat, x="Category", y="Articles", color="Brand", barmode="stack",
-                color_discrete_map=CHART_BRANDS,
-            )
-            fig_brand_cat.update_layout(height=380, **PLOTLY_DARK)
-            fig_brand_cat.update_layout(title=dict(text="Brand Coverage by Category", x=0.01))
-            st.plotly_chart(fig_brand_cat, use_container_width=True)
-
-        official_counts = df_events.groupby(["competitor", "official_source"])["item_id"].nunique().reset_index()
-        official_counts["official_source"] = official_counts["official_source"].map({1: "Official", 0: "Media"})
-        official_counts.columns = ["Brand", "Source Type", "Articles"]
-        fig_official = px.bar(
-            official_counts, x="Brand", y="Articles", color="Source Type", barmode="group",
-            color_discrete_map={"Official": "#c9a96e", "Media": "#5a5a55"},
-        )
-        fig_official.update_layout(height=340, **PLOTLY_DARK)
-        fig_official.update_layout(title=dict(text="Official vs Media Coverage", x=0.01))
-        st.plotly_chart(fig_official, use_container_width=True)
-
-        with st.expander("Individual source breakdown"):
-            source_detail = df_cov.groupby(["category", "source_name"])["item_id"].nunique().reset_index()
-            source_detail.columns = ["Category", "Source", "Articles"]
-            st.dataframe(
-                source_detail.sort_values(["Category", "Articles"], ascending=[True, False]),
-                use_container_width=True, hide_index=True,
-            )
 
 # ─── Tab 7: Search ────────────────────────────────────────────
 with tab_search:
