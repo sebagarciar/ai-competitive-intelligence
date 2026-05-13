@@ -137,6 +137,7 @@ def detect_trends() -> list[dict]:
             from sklearn.ensemble import IsolationForest
             X = np.array([t["_features"] for t in trends], dtype=float)
             iso = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+            iso.fit(X)
             raw_scores = iso.score_samples(X)  # lower = more anomalous
             # Normalise to [0, 1] where 1 = most anomalous
             lo, hi = raw_scores.min(), raw_scores.max()
