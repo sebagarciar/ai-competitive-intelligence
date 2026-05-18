@@ -7,6 +7,8 @@ Two-step approach:
   2. Zero-shot classification (cross-encoder/nli-MiniLM2-L6-H768) — primary
      classifier for ambiguous items; pre-warmed by the pipeline before the loop
 """
+import json
+import math
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -182,12 +184,42 @@ def _relevance_score(text: str, brand: str, embedding: Optional[np.ndarray] = No
     return 2.0
 
 
-def _impact_score(source_name: str, keyword_score: float, official: bool) -> float:
+_ENGAGEMENT_KEYS = ("likes", "retweets", "reposts", "replies",
+                    "upvotes", "comments", "views")
+
+
+def _engagement_total(metrics: dict | None) -> int:
+    if not metrics:
+        return 0
+    total = 0
+    for k in _ENGAGEMENT_KEYS:
+        v = metrics.get(k)
+        if isinstance(v, (int, float)):
+            # YouTube views dwarf likes — discount them so they don't dominate
+            total += int(v) // 100 if k == "views" else int(v)
+    return total
+
+
+def _engagement_boost(metrics: dict | None) -> float:
+    """Log-scaled bump in [0, 1.0]: ~0.5 at 100 eng, ~0.75 at 1k, capped at 10k+."""
+    total = _engagement_total(metrics)
+    if total <= 0:
+        return 0.0
+    return min(1.0, math.log10(1 + total) / 4.0)
+
+
+def _impact_score(
+    source_name: str,
+    keyword_score: float,
+    official: bool,
+    engagement: dict | None = None,
+) -> float:
     prestige = SOURCE_PRESTIGE_SCORES.get(source_name, 2)
     base = prestige * 0.6 + keyword_score * 10 * 0.4
     score = max(1.0, min(5.0, base))
     if official:
         score = min(5.0, score + 0.5)
+    score = min(5.0, score + _engagement_boost(engagement))
     return round(score, 1)
 
 
@@ -222,6 +254,13 @@ def extract_event(item: dict, use_zero_shot: bool = False) -> dict:
     source_name = item.get("source_name", "")
     official = bool(item.get("official_source", False))
     item_id = item.get("item_id", "")
+
+    engagement = item.get("engagement_metrics")
+    if isinstance(engagement, str):
+        try:
+            engagement = json.loads(engagement)
+        except Exception:
+            engagement = None
 
     # Use the pre-computed embedding blob if the pipeline fetched it
     item_embedding: Optional[np.ndarray] = None
@@ -271,7 +310,7 @@ def extract_event(item: dict, use_zero_shot: bool = False) -> dict:
         "event_type": event_type,
         "business_function": BUSINESS_FUNCTION_MAP.get(event_type, "other"),
         "relevance_score": _relevance_score(text, brand, item_embedding),
-        "impact_score": _impact_score(source_name, kw_conf, official),
+        "impact_score": _impact_score(source_name, kw_conf, official, engagement),
         "summary": summary,
         "evidence_snippet": _evidence_snippet(text, event_type),
         "confidence_score": round(confidence, 3),

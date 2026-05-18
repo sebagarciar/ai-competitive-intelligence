@@ -140,7 +140,8 @@ def extract(use_zero_shot: bool = True) -> None:
     rows = conn.execute("""
         SELECT i.item_id, i.competitor, i.source_name, i.source_url,
                i.title, i.excerpt, i.raw_text, i.translated_text,
-               i.original_language, i.official_source, i.embedding
+               i.original_language, i.official_source, i.embedding,
+               i.engagement_metrics
         FROM items i
         LEFT JOIN events e ON i.item_id = e.item_id
         WHERE e.event_id IS NULL

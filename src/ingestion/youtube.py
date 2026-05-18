@@ -108,6 +108,7 @@ def _fetch_channel_videos(channel_id: str, brand: str, is_official: bool) -> lis
         likes = stats.get(video_id, {}).get("likeCount", 0)
         engagement_prefix = f"[Views: {view_count:,}, Likes: {likes:,}] "
 
+        comments = stats.get(video_id, {}).get("commentCount", 0)
         items.append({
             "competitor": brand,
             "source_type": "video_content",
@@ -119,6 +120,11 @@ def _fetch_channel_videos(channel_id: str, brand: str, is_official: bool) -> lis
             "raw_text": f"{title}\n\n{description[:2000]}",
             "original_language": "en",  # Could enhance with language detection
             "official_source": is_official,
+            "engagement_metrics": {
+                "views": int(view_count),
+                "likes": int(likes),
+                "comments": int(comments),
+            },
         })
 
     return items
@@ -150,6 +156,7 @@ def _fetch_video_statistics(video_ids: list[str]) -> dict:
         stats[video_id] = {
             "viewCount": int(statistics.get("viewCount", 0)),
             "likeCount": int(statistics.get("likeCount", 0)),
+            "commentCount": int(statistics.get("commentCount", 0)),
         }
 
     return stats

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import uuid
 from pathlib import Path
@@ -108,6 +109,7 @@ def init_db() -> None:
             ("sentiment_score", "REAL"),
             ("sentiment_confidence", "REAL"),
             ("embedding_model", "TEXT"),
+            ("engagement_metrics", "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE items ADD COLUMN {col} {typedef}")
@@ -132,13 +134,15 @@ def url_exists(url: str) -> bool:
 
 def insert_item(item: dict) -> str:
     item_id = item.get("item_id") or str(uuid.uuid4())
+    engagement = item.get("engagement_metrics")
+    engagement_json = json.dumps(engagement) if engagement else None
     with db() as conn:
         conn.execute("""
             INSERT OR IGNORE INTO items
                 (item_id, competitor, source_type, source_name, source_url,
                  published_at, title, excerpt, raw_text, translated_text,
-                 original_language, official_source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 original_language, official_source, engagement_metrics)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             item_id,
             item.get("competitor"),
@@ -152,6 +156,7 @@ def insert_item(item: dict) -> str:
             item.get("translated_text"),
             item.get("original_language"),
             int(item.get("official_source", False)),
+            engagement_json,
         ))
     return item_id
 
@@ -337,6 +342,51 @@ def cache_synthesis(brand: str, brief_date: str, model: str, prompt_hash: str, o
         )
 
 
+def backfill_engagement_from_excerpt() -> int:
+    """One-time migration: parse engagement_metrics from the legacy excerpt prefix.
+
+    Supports the prefixes used by X, YouTube, Reddit, and Bluesky adapters.
+    Returns the number of rows updated.
+    """
+    import re
+
+    patterns = [
+        (re.compile(r"^\[Likes:\s*(\d+),\s*Retweets:\s*(\d+)(?:,\s*Replies:\s*(\d+))?\]"),
+         lambda m: {"likes": int(m.group(1)), "retweets": int(m.group(2)),
+                    **({"replies": int(m.group(3))} if m.group(3) else {})}),
+        (re.compile(r"^\[Views:\s*([\d,]+),\s*Likes:\s*([\d,]+)\]"),
+         lambda m: {"views": int(m.group(1).replace(",", "")),
+                    "likes": int(m.group(2).replace(",", ""))}),
+        (re.compile(r"^\[Upvotes:\s*(\d+)(?:,\s*Comments:\s*(\d+))?\]"),
+         lambda m: {"upvotes": int(m.group(1)),
+                    **({"comments": int(m.group(2))} if m.group(2) else {})}),
+        (re.compile(r"^\[Likes:\s*(\d+),\s*Reposts:\s*(\d+)(?:,\s*Replies:\s*(\d+))?\]"),
+         lambda m: {"likes": int(m.group(1)), "reposts": int(m.group(2)),
+                    **({"replies": int(m.group(3))} if m.group(3) else {})}),
+    ]
+
+    updated = 0
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT item_id, excerpt FROM items WHERE engagement_metrics IS NULL AND excerpt LIKE '[%'"
+        ).fetchall()
+        for row in rows:
+            excerpt = row["excerpt"] or ""
+            for pat, builder in patterns:
+                m = pat.match(excerpt)
+                if m:
+                    metrics = builder(m)
+                    conn.execute(
+                        "UPDATE items SET engagement_metrics = ? WHERE item_id = ?",
+                        (json.dumps(metrics), row["item_id"]),
+                    )
+                    updated += 1
+                    break
+    return updated
+
+
 if __name__ == "__main__":
     init_db()
     print(f"Database initialized at {DB_PATH}")
+    n = backfill_engagement_from_excerpt()
+    print(f"Back-filled engagement_metrics for {n} existing items")

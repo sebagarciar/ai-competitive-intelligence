@@ -8,6 +8,7 @@ and component choices have changed.
 Run with:
     streamlit run dashboard/app.py
 """
+import json as _json
 import re as _re
 import sys
 from pathlib import Path
@@ -803,7 +804,7 @@ def load_x_posts(days: int = 30) -> pd.DataFrame:
     df = pd.read_sql_query("""
         SELECT item_id, competitor, source_name, source_url,
                published_at, excerpt, raw_text,
-               sentiment_label, sentiment_score
+               sentiment_label, sentiment_score, engagement_metrics
         FROM items
         WHERE source_name LIKE 'X - @%'
           AND published_at >= datetime('now', ?)
@@ -1149,6 +1150,63 @@ with tab_digest:
         st.markdown('<div style="padding:1rem;border-left:2px solid #c9a96e;background:#fff;color:#555;font-size:0.9rem;">No critical events detected in this window.</div>', unsafe_allow_html=True)
 
     st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
+
+    # YouTube engagement KPIs
+    yt_conn = get_connection()
+    df_yt = pd.read_sql_query(
+        """
+        SELECT competitor, title, source_url, engagement_metrics, published_at
+        FROM items
+        WHERE source_type = 'video_content'
+          AND engagement_metrics IS NOT NULL
+          AND published_at >= datetime('now', ?)
+        """,
+        yt_conn,
+        params=(f"-{days_back} days",),
+    )
+    yt_conn.close()
+    if selected_brands:
+        df_yt = df_yt[df_yt["competitor"].isin(selected_brands)]
+
+    if not df_yt.empty:
+        def _yt_metric(row, key):
+            try:
+                m = _json.loads(row) if row else {}
+            except Exception:
+                m = {}
+            v = m.get(key, 0)
+            return int(v) if isinstance(v, (int, float)) else 0
+
+        df_yt["views"] = df_yt["engagement_metrics"].apply(lambda r: _yt_metric(r, "views"))
+        df_yt["likes"] = df_yt["engagement_metrics"].apply(lambda r: _yt_metric(r, "likes"))
+        df_yt["comments"] = df_yt["engagement_metrics"].apply(lambda r: _yt_metric(r, "comments"))
+
+        st.markdown('<div class="cc-section-eyebrow">Video Pulse</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cc-section-title" style="font-size:1.4rem;">YouTube Engagement</div>', unsafe_allow_html=True)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Videos", f"{len(df_yt):,}")
+        k2.metric("Total Views", f"{df_yt['views'].sum():,}")
+        k3.metric("Total Likes", f"{df_yt['likes'].sum():,}")
+        k4.metric("Total Comments", f"{df_yt['comments'].sum():,}")
+
+        top_video = df_yt.sort_values("views", ascending=False).head(1)
+        if not top_video.empty:
+            tv = top_video.iloc[0]
+            tv_title = _esc(str(tv.get("title", ""))[:120])
+            tv_url = str(tv.get("source_url", ""))
+            tv_link = f'<a href="{tv_url}" target="_blank" style="color:#1a1a1a;text-decoration:none;border-bottom:1px solid #c9a96e;">{tv_title}</a>' if tv_url else tv_title
+            st.markdown(
+                f"""
+<div style="margin-top:0.6rem;padding:0.7rem 0.9rem;background:#fafaf7;border-left:3px solid #c9a96e;">
+  <div style="font-family:JetBrains Mono,monospace;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:#888;margin-bottom:0.3rem;">Top video · {_esc(tv['competitor'])}</div>
+  <div style="font-size:0.9rem;font-weight:600;line-height:1.3;margin-bottom:0.25rem;">{tv_link}</div>
+  <div style="font-family:JetBrains Mono,monospace;font-size:0.7rem;color:#888;">▶ {tv['views']:,} views &nbsp; ♥ {tv['likes']:,} &nbsp; 💬 {tv['comments']:,}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('<hr class="cc-divider"/>', unsafe_allow_html=True)
 
     # B. Two-column: Moves + Trending
     col_moves, col_trending = st.columns([1.3, 1])
@@ -1650,9 +1708,24 @@ with tab_perception:
                 return int(m.group(1)), int(m.group(2)), m.group(3).strip()
             return 0, 0, str(excerpt).strip()
 
+        def _strip_excerpt_prefix(excerpt: str) -> str:
+            return _re.sub(r"^\[[^\]]*\]\s*", "", str(excerpt or "")).strip()
+
         rows = df_x.to_dict("records")
         for r in rows:
-            r["likes"], r["retweets"], r["post_text"] = _parse_engagement(r["excerpt"])
+            metrics_json = r.get("engagement_metrics")
+            metrics = None
+            if metrics_json:
+                try:
+                    metrics = _json.loads(metrics_json)
+                except Exception:
+                    metrics = None
+            if metrics:
+                r["likes"] = int(metrics.get("likes", 0))
+                r["retweets"] = int(metrics.get("retweets", 0))
+                r["post_text"] = _strip_excerpt_prefix(r["excerpt"])
+            else:
+                r["likes"], r["retweets"], r["post_text"] = _parse_engagement(r["excerpt"])
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("X Posts", len(rows))
