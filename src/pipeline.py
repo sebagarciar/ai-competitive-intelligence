@@ -14,7 +14,7 @@ from src.db import (
     update_item_translation, get_items_without_embeddings,
     get_items_without_sentiment, update_item_sentiment,
 )
-from src.ingestion import gdelt, rss_feeds, brand_sites, youtube, webhose, reddit, twitter, bluesky, grok_search
+from src.ingestion import rss_feeds, brand_sites, youtube, webhose, reddit, twitter, bluesky, grok_search
 from src.processing.normalizer import normalize_item
 from src.processing.language import process_language
 from src.processing.embeddings import embed_batch, to_bytes, item_text, MODEL_NAME as EMBEDDING_MODEL
@@ -47,7 +47,6 @@ def ingest() -> int:
 
     # News and media sources (no query planning needed)
     for name, fn in [
-        ("GDELT", gdelt.fetch_all),
         ("RSS", rss_feeds.fetch_all),
         ("Brand Sites", brand_sites.fetch_all),
         ("YouTube", youtube.fetch_all),

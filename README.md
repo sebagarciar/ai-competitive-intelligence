@@ -54,7 +54,7 @@ This workflow demonstrates the full system in under 2 minutes.
 │   ├── pipeline.py              # End-to-end orchestrator
 │   ├── ingestion/
 │   │   ├── query_planner.py     # Multi-query generation per brand
-│   │   ├── gdelt.py             # GDELT DOC 2.0 API
+│   │   ├── gdelt.py             # GDELT DOC 2.0 API (disabled: aggressive rate limits)
 │   │   ├── rss_feeds.py         # Vogue Business, BoF, WWD, FT
 │   │   ├── brand_sites.py       # Official brand news pages
 │   │   ├── youtube.py           # YouTube channel + keyword search
@@ -88,7 +88,6 @@ This workflow demonstrates the full system in under 2 minutes.
 
 | Source | Type | Auth | Notes |
 |---|---|---|---|
-| GDELT DOC 2.0 | News aggregator | None | Free, 30-day window |
 | Vogue Business / BoF / WWD / FT RSS | Fashion media | None | Brand-filtered |
 | Chanel / Dior / Gucci official sites | Brand-owned | None | `official_source = True` |
 | YouTube | Video | `YOUTUBE_API_KEY` | Channel + keyword search |

@@ -36,7 +36,7 @@ jupyter notebook notebooks/evaluation.ipynb
 ### Pipeline Flow (`src/pipeline.py`)
 The pipeline orchestrates seven sequential stages:
 
-1. **Ingest** (`ingest()`) — Fetches articles from GDELT, RSS feeds, and brand sites. Deduplicates by URL before insertion.
+1. **Ingest** (`ingest()`) — Fetches articles from RSS feeds, brand sites, YouTube, Webhose, Reddit, Bluesky, and Grok. Deduplicates by URL before insertion. (GDELT is disabled in the pipeline — the public endpoint rate-limits scripted clients too aggressively; module remains in `src/ingestion/gdelt.py` for reference.)
 2. **Normalize** (`normalize_item()`) — Cleans HTML, standardizes dates via `src/processing/normalizer.py`.
 3. **Language** (`process_language()`) — Detects language with `langdetect`, translates Spanish→English using Google Translate free tier.
 4. **Embed** (`embed()`) — Generates 384-dim embeddings via local `all-MiniLM-L6-v2` model. Stored as BLOBs in SQLite.
@@ -58,7 +58,6 @@ Critical: The DB uses foreign keys (`PRAGMA foreign_keys=ON`). Events reference 
 8 categories: `collection_launch`, `campaign_or_collaboration`, `pricing_or_exclusivity`, `geographic_expansion`, `creative_direction`, `sustainability_or_sourcing`, `celebrity_or_influencer_alignment`, `reputational_issue`.
 
 ### Data Sources
-- **GDELT DOC 2.0** — Free news aggregator, 30-day rolling window, no API key
 - **RSS feeds** — Vogue Business, BoF, WWD, Financial Times (brand-filtered)
 - **Brand sites** — Official news pages (flagged with `official_source = True`)
 - **YouTube** — Official channels + keyword search (`YOUTUBE_API_KEY`)
