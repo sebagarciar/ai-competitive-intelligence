@@ -1068,7 +1068,6 @@ df_events = load_events(days=days_back, brands=selected_brands, event_types=sele
 df_trends = load_trends()
 
 # ── KPI strip ──
-total_articles = len(df_events["item_id"].unique()) if not df_events.empty else 0
 events_extracted = int(df_events["event_type"].notna().sum()) if not df_events.empty else 0
 trends_count = len(df_trends)
 critical_count = int(df_trends["is_critical"].sum()) if not df_trends.empty else 0
@@ -1088,7 +1087,6 @@ if not df_competitors.empty and "impact_score" in df_competitors.columns:
 
 st.markdown(f"""
 <div class="cc-kpi-strip">
-    <div class="cc-kpi"><div class="label">Articles</div><div class="value">{total_articles:,}</div><div class="delta">{days_back}D WINDOW</div></div>
     <div class="cc-kpi"><div class="label">Events</div><div class="value">{events_extracted:,}</div><div class="delta">EXTRACTED</div></div>
     <div class="cc-kpi gold"><div class="label">Trends</div><div class="value">{trends_count}</div><div class="delta">DETECTED</div></div>
     <div class="cc-kpi alert"><div class="label">Critical</div><div class="value">{critical_count}</div><div class="delta">FLAGGED</div></div>
