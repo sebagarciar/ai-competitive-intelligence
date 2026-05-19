@@ -82,6 +82,8 @@ def detect_trends() -> list[dict]:
             std_prev_28d = math.sqrt(variance)
 
         unique_sources = len({ev["source_name"] for ev in group})
+        group_7d = [ev for ev, d in zip(group, published_dates) if d >= window_7d]
+        unique_sources_7d = len({ev["source_name"] for ev in group_7d})
         impact_scores = [ev["impact_score"] for ev in group if ev.get("impact_score")]
         avg_impact = sum(impact_scores) / len(impact_scores) if impact_scores else 0.0
         sentiment_scores = [ev["sentiment_score"] for ev in group if ev.get("sentiment_score") is not None]
@@ -120,6 +122,7 @@ def detect_trends() -> list[dict]:
             "mean_prev_28d": round(mean_prev_28d, 3),
             "std_prev_28d": round(std_prev_28d, 3),
             "unique_sources": unique_sources,
+            "unique_sources_7d": unique_sources_7d,
             "avg_impact": round(avg_impact, 2),
             "avg_sentiment": round(avg_sentiment, 3),
             "burst_z": round(burst_z, 3),

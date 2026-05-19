@@ -77,6 +77,7 @@ def init_db() -> None:
                 mean_prev_28d   REAL,
                 std_prev_28d    REAL,
                 unique_sources  INTEGER,
+                unique_sources_7d INTEGER,
                 avg_impact      REAL,
                 burst_z         REAL,
                 trend_score     REAL,
@@ -118,6 +119,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE trends ADD COLUMN avg_sentiment REAL")
         if "anomaly_score" not in existing_trends:
             conn.execute("ALTER TABLE trends ADD COLUMN anomaly_score REAL")
+        if "unique_sources_7d" not in existing_trends:
+            conn.execute("ALTER TABLE trends ADD COLUMN unique_sources_7d INTEGER")
         # Create sentiment index only after column is guaranteed to exist
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_items_sentiment ON items(sentiment_score)"
@@ -284,9 +287,9 @@ def insert_trend(trend: dict) -> str:
         conn.execute("""
             INSERT INTO trends
                 (trend_id, competitor, event_type, cluster_id, count_7d,
-                 mean_prev_28d, std_prev_28d, unique_sources, avg_impact,
-                 burst_z, trend_score, is_critical, avg_sentiment, anomaly_score)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 mean_prev_28d, std_prev_28d, unique_sources, unique_sources_7d,
+                 avg_impact, burst_z, trend_score, is_critical, avg_sentiment, anomaly_score)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             trend_id,
             trend["competitor"],
@@ -296,6 +299,7 @@ def insert_trend(trend: dict) -> str:
             trend["mean_prev_28d"],
             trend["std_prev_28d"],
             trend["unique_sources"],
+            trend.get("unique_sources_7d"),
             trend["avg_impact"],
             trend["burst_z"],
             trend["trend_score"],

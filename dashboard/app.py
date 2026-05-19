@@ -1096,12 +1096,12 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_digest, tab_trends, tab_perception, tab_compare, tab_brief, tab_moves, tab_search = st.tabs([
+tab_brief, tab_digest, tab_trends, tab_perception, tab_compare, tab_moves, tab_search = st.tabs([
+    "Weekly Brief",
     "Digest",
     "Trends",
     "Perception",
     "Compare",
-    "Weekly Brief",
     "Event Feed",
     "Search",
 ])
@@ -1262,7 +1262,7 @@ with tab_digest:
                 competitor = row.get("competitor", "")
                 score = row.get("trend_score", 0)
                 count = row.get("count_7d", 0)
-                sources = row.get("unique_sources", 0)
+                sources = row.get("unique_sources_7d") or row.get("unique_sources", 0)
                 bar_pct = min(int(score / 5 * 100), 100)
                 st.markdown(f"""
 <div class="cc-trend">

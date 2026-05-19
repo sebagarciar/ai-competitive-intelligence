@@ -30,7 +30,7 @@ No significant trend bursts detected in the current period. Activity remains at 
 
 ---
 
-## Top Competitor Moves
+## Top Moves
 
 {% for brand in brands %}
 ### {{ brand }}
@@ -46,20 +46,6 @@ _{{ ev.source_name }} · {{ ev.published_at[:10] if ev.published_at else 'N/A' }
 _No significant events detected for {{ brand }} in this period._
 {% endif %}
 {% endfor %}
-
----
-
-## Emerging Trends
-
-{% if emerging_trends %}
-| Brand | Event Type | Trend Score | 7d Count | Sources |
-|-------|-----------|-------------|----------|---------|
-{% for t in emerging_trends %}
-| {{ t.competitor }} | {{ t.event_type | replace('_', ' ') | title }} | {{ "%.2f"|format(t.trend_score) }} | {{ t.count_7d }} | {{ t.unique_sources }} |
-{% endfor %}
-{% else %}
-_No emerging trends detected above threshold._
-{% endif %}
 
 ---
 
@@ -104,10 +90,8 @@ _Synthesis generated locally by {{ synthesis_model }}._
 
 ## Source Coverage
 
-| Source | Articles |
-|--------|---------|
 {% for src, count in source_counts.items() %}
-| {{ src }} | {{ count }} |
+- **{{ src }}**: {{ count }} articles
 {% endfor %}
 
 ---
@@ -247,8 +231,10 @@ def generate_brief(use_llm: bool = True) -> str:
 
     source_counts: dict[str, int] = {}
     for item in unique_items:
-        sn = item.get("source_name", "Unknown")
-        source_counts[sn] = source_counts.get(sn, 0) + 1
+        sn = item.get("source_name", "Unknown") or "Unknown"
+        # Collapse "Platform - Creator" → "Platform"
+        base = sn.split(" - ")[0].strip()
+        source_counts[base] = source_counts.get(base, 0) + 1
     source_counts = dict(sorted(source_counts.items(), key=lambda x: -x[1]))
 
     implications = _build_implications(events_by_brand, trends)
@@ -280,7 +266,6 @@ def generate_brief(use_llm: bool = True) -> str:
         brands=brands,
         top_trends=sorted(trends, key=lambda t: t["trend_score"], reverse=True)[:5],
         events_by_brand=events_by_brand,
-        emerging_trends=emerging_trends[:10],
         critical_events=critical_events,
         implications=implications,
         synthesis_by_brand=synthesis_by_brand,
