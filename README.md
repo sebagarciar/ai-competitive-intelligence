@@ -75,7 +75,7 @@ This workflow demonstrates the full system in under 2 minutes.
 │   └── output/
 │       └── brief.py             # Jinja2 weekly intelligence brief
 ├── dashboard/
-│   └── app.py                   # Streamlit dashboard (4 tabs)
+│   └── app.py                   # Streamlit dashboard (7 tabs)
 ├── notebooks/
 │   └── evaluation.ipynb         # Precision@10, F1, Trend Precision@5
 ├── data/

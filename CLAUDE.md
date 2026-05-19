@@ -77,7 +77,7 @@ Social adapters (Reddit, Bluesky, Grok) share a **query planner** (`src/ingestio
 Streamlit app with 7 tabs:
 1. **Digest** — Top stories and critical event highlights
 2. **Trends** — Bar/scatter charts + 14-day signal volume time-series per brand
-3. **Perception** — Sentiment charts: avg per brand, distribution pie, diverging share-of-voice bar (positive/negative % per brand), positive/negative article lists
+3. **Perception** — Sentiment charts: avg per brand, distribution pie, diverging share-of-voice bar (positive/negative % per brand), positive/negative article lists; Video Pulse: YouTube KPI strip + dual-axis engagement chart (likes/comments bars left, views line right) + top video card; Posts on X
 4. **Compare** — Side-by-side competitor comparison: per-brand KPI cards, grouped and normalised event-mix bars, daily activity time-series with event-type filter, impact × relevance scatter
 5. **Weekly Brief** — Markdown render of latest brief + "Download PDF" button (generates styled A4 PDF via `fpdf2`)
 6. **Event Feed** — Filterable full event table with sentiment badges
