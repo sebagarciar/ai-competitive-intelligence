@@ -95,7 +95,7 @@ def _fetch_subreddit_posts(reddit: praw.Reddit, subreddit_name: str) -> list[dic
                 "title": post.title,
                 "excerpt": engagement_prefix + (post.selftext[:500] if post.selftext else post.title),
                 "raw_text": f"{post.title}\n\n{post.selftext[:2000]}",
-                "original_language": "en",
+                "original_language": None,
                 "official_source": False,
                 # Social engagement metadata (stored in excerpt for now)
                 "engagement_metrics": {
@@ -141,7 +141,7 @@ def _fetch_comments_from_post(post, brand: str, max_comments: int = 10) -> list[
                 "title": f"Comment on: {post.title[:100]}",
                 "excerpt": engagement_prefix + comment.body[:500],
                 "raw_text": comment.body[:2000],
-                "original_language": "en",
+                "original_language": None,
                 "official_source": False,
                 "engagement_metrics": {
                     "upvotes": comment.score,
@@ -194,7 +194,7 @@ def _search_reddit_by_queries(reddit, queries: list[str]) -> list[dict]:
                     "title": post.title,
                     "excerpt": engagement_prefix + (post.selftext[:500] if post.selftext else post.title),
                     "raw_text": f"{post.title}\n\n{post.selftext[:2000]}",
-                    "original_language": "en",
+                    "original_language": None,
                     "official_source": False,
                     "engagement_metrics": {
                         "upvotes": post.score,

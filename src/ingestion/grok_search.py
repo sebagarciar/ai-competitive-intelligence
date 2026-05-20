@@ -60,6 +60,7 @@ def _call_grok(brand: str, queries: list[str]) -> list[dict]:
         prompt = USER_PROMPT_TEMPLATE.format(
             brand=brand,
             queries=", ".join(f'"{q}"' for q in queries),
+            LOOKBACK_DAYS=LOOKBACK_DAYS,
         )
 
         payload = {
@@ -153,7 +154,7 @@ def _parse_post(post: dict, brand: str) -> dict | None:
             "title": f"X post by @{author}",
             "excerpt": engagement_prefix + text[:500],
             "raw_text": text[:2000],
-            "original_language": "en",
+            "original_language": None,
             "official_source": False,
             "engagement_metrics": {
                 "likes": likes,

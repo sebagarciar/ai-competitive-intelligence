@@ -65,7 +65,7 @@ This workflow demonstrates the full system in under 2 minutes.
 │   │   └── twitter.py           # Twitter/X scraper (legacy, disabled)
 │   ├── processing/
 │   │   ├── normalizer.py        # Text cleaning
-│   │   ├── language.py          # Language detect + ES→EN translation
+│   │   ├── language.py          # Language detect + non-EN→EN translation
 │   │   ├── embeddings.py        # sentence-transformers (local)
 │   │   ├── dedup.py             # URL + semantic deduplication
 │   │   └── extractor.py         # Event classification (keyword + zero-shot)
@@ -114,7 +114,7 @@ This improves coverage across consumer opinions, competitive comparisons, and pr
 
 1. **Ingest** — pull from all sources; social sources use multi-query planning with retry on thin results
 2. **Normalize** — clean HTML, standardize dates
-3. **Language** — detect language, translate ES→EN via Google Translate (free tier)
+3. **Language** — detect language, translate any non-English content to English via Google Translate (free tier)
 4. **Embed** — compute sentence embeddings with `all-MiniLM-L6-v2` (local model)
 5. **Deduplicate** — URL exact-match + cosine similarity threshold (0.92)
 6. **Extract** — classify event type using keyword scoring; optional zero-shot fallback

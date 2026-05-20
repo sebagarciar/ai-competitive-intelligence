@@ -108,7 +108,7 @@ def _parse_post(post: dict, brand: str) -> dict | None:
             "title": f"Bluesky post by @{handle}",
             "excerpt": engagement_prefix + text[:500],
             "raw_text": text[:2000],
-            "original_language": "en",
+            "original_language": None,
             "official_source": False,
             "engagement_metrics": {
                 "likes": like_count,

@@ -38,7 +38,7 @@ The pipeline orchestrates seven sequential stages:
 
 1. **Ingest** (`ingest()`) — Fetches articles from RSS feeds, brand sites, YouTube, Webhose, Reddit, Bluesky, and Grok. Deduplicates by URL before insertion. (GDELT is disabled in the pipeline — the public endpoint rate-limits scripted clients too aggressively; module remains in `src/ingestion/gdelt.py` for reference.)
 2. **Normalize** (`normalize_item()`) — Cleans HTML, standardizes dates via `src/processing/normalizer.py`.
-3. **Language** (`process_language()`) — Detects language with `langdetect`, translates Spanish→English using Google Translate free tier.
+3. **Language** (`process_language()`) — Detects language with `langdetect`, translates any non-English content to English using Google Translate free tier. Social adapters (Reddit, Bluesky, Grok/X) set `original_language: None` so detection always runs.
 4. **Embed** (`embed()`) — Generates 384-dim embeddings via local `all-MiniLM-L6-v2` model. Stored as BLOBs in SQLite.
 5. **Deduplicate** — Semantic deduplication using cosine similarity (threshold: 0.92).
 6. **Extract** (`extract()`) — Event classification: keywords act as a fast pre-filter (skip zero-shot when `kw_conf >= KEYWORD_CONFIDENCE_THRESHOLD=0.35`); zero-shot (`cross-encoder/nli-MiniLM2-L6-H768`) is the primary classifier for ambiguous items. Zero-shot is enabled by default (`use_zero_shot=True`); disable with `--no-zero-shot` for faster runs.

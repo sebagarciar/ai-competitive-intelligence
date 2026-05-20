@@ -1,5 +1,5 @@
 """
-Language detection and ES→EN translation.
+Language detection and non-EN→EN translation.
 """
 from langdetect import detect, LangDetectException
 from deep_translator import GoogleTranslator
@@ -33,7 +33,7 @@ def process_language(item: dict) -> dict:
     lang = item.get("original_language") or detect_language(raw)
     item["original_language"] = lang
 
-    if lang == "es":
+    if lang != "en":
         item["translated_text"] = translate_to_english(raw)
     else:
         item["translated_text"] = raw
