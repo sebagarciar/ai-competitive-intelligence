@@ -3,15 +3,21 @@ Sentence embeddings using sentence-transformers (local, no API key needed).
 Model: all-MiniLM-L6-v2 — fast, 384-dim, good for semantic similarity.
 """
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
-_model: SentenceTransformer | None = None
+_model = None
 MODEL_NAME = "all-MiniLM-L6-v2"
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model():
     global _model
     if _model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise RuntimeError(
+                "sentence-transformers is not installed. "
+                "Semantic search is unavailable in this deployment."
+            )
         print(f"[Embeddings] Loading model {MODEL_NAME}...")
         _model = SentenceTransformer(MODEL_NAME)
     return _model

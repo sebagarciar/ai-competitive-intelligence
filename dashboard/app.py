@@ -2144,7 +2144,11 @@ with tab_search:
         if not corpus:
             st.markdown('<div style="color:#888;font-size:0.9rem;">No embeddings found. Run the pipeline first.</div>', unsafe_allow_html=True)
         else:
-            q_emb = embed_text(query)
+            try:
+                q_emb = embed_text(query)
+            except RuntimeError:
+                st.info("Semantic search requires the sentence-transformers model, which is not available in this deployment.")
+                st.stop()
             emb_matrix = np.stack([item["embedding"] for item in corpus])
             scores = emb_matrix @ q_emb
             top_idx = np.argsort(scores)[::-1][:10]
