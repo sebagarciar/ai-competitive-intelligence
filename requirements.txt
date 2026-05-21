@@ -1,31 +1,11 @@
-# Configuration
-python-dotenv==1.0.0
+# Dashboard-only requirements for read-only cloud demo.
+# Pipeline packages (torch, ingestion, NLP) are not needed here —
+# all data is pre-computed and stored in data/intelligence.db.
 
-# Data
-scikit-learn==1.6.0
-pandas==2.2.3
-numpy==1.26.4
-
-# Output
-jinja2==3.1.5
-
-# Dashboard
+python-dotenv>=1.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+jinja2>=3.1.0
 plotly>=5.20.0
 fpdf2>=2.7
 mistune==2.0.5
-
-# Embeddings + semantic search (sentence-transformers pulls torch)
-sentence-transformers>=2.7.0
-
-# Ingestion
-requests>=2.32.0
-feedparser>=6.0.0
-beautifulsoup4>=4.12.0
-trafilatura>=1.12.0
-cloudscraper>=1.2.71
-praw>=7.7.0
-httpx>=0.27.0
-
-# Language detection + translation
-langdetect>=1.0.9
-deep-translator>=1.11.0
