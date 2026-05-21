@@ -10,7 +10,6 @@ numpy==1.26.4
 jinja2==3.1.5
 
 # Dashboard
-streamlit==1.41.1
-plotly==5.24.1
+plotly>=5.20.0
 fpdf2>=2.7
 mistune==2.0.5
