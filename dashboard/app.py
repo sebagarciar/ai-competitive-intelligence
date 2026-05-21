@@ -774,7 +774,20 @@ def load_corpus() -> list[dict]:
 @st.cache_data(ttl=300)
 def load_trends() -> pd.DataFrame:
     conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM trends ORDER BY trend_score DESC", conn)
+    # Keep the highest-scoring row per (competitor, event_type) to avoid duplicate
+    # signal entries when multiple clusters share the same event type and brand.
+    df = pd.read_sql_query("""
+        SELECT t.*
+        FROM trends t
+        INNER JOIN (
+            SELECT competitor, event_type, MAX(trend_score) AS max_score
+            FROM trends
+            GROUP BY competitor, event_type
+        ) best ON t.competitor = best.competitor
+               AND t.event_type = best.event_type
+               AND t.trend_score = best.max_score
+        ORDER BY t.trend_score DESC
+    """, conn)
     conn.close()
     return df
 
@@ -1005,18 +1018,22 @@ st.sidebar.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-run_clicked = st.sidebar.button("Run Pipeline", type="primary", key="run_pipeline_btn")
-reload_clicked = st.sidebar.button("Reload Dashboard", key="reload_btn")
+import os as _os
+_demo_mode = _os.environ.get("DEMO_MODE", "0") == "1"
 
-if run_clicked:
-    with st.spinner("Running pipeline… this may take a few minutes"):
-        try:
-            from src.pipeline import run_pipeline
-            run_pipeline()
-            st.cache_data.clear()
-            st.sidebar.success("Pipeline complete.")
-        except Exception as e:
-            st.sidebar.error(f"Pipeline error: {e}")
+if not _demo_mode:
+    run_clicked = st.sidebar.button("Run Pipeline", type="primary", key="run_pipeline_btn")
+    if run_clicked:
+        with st.spinner("Running pipeline… this may take a few minutes"):
+            try:
+                from src.pipeline import run_pipeline
+                run_pipeline()
+                st.cache_data.clear()
+                st.sidebar.success("Pipeline complete.")
+            except Exception as e:
+                st.sidebar.error(f"Pipeline error: {e}")
+
+reload_clicked = st.sidebar.button("Reload Dashboard", key="reload_btn")
 
 if reload_clicked:
     st.cache_data.clear()
@@ -1538,11 +1555,11 @@ with tab_perception:
                     text="Avg Sentiment", color_discrete_map=CHART_BRANDS,
                 )
                 fig_brand_sent.update_traces(texttemplate="%{text:+.1%}", textposition="outside",
-                                             textfont=dict(color="#e8e6df"))
+                                             textfont=dict(color="#e8e6df"), cliponaxis=False)
                 fig_brand_sent.add_hline(y=0, line_dash="dash", line_color="#3a3a3a")
-                fig_brand_sent.update_layout(height=340, showlegend=False, **PLOTLY_DARK)
+                fig_brand_sent.update_layout(height=340, showlegend=False, bargap=0.55, **PLOTLY_DARK)
                 fig_brand_sent.update_layout(title=dict(text="Avg Sentiment by Brand", x=0.01))
-                fig_brand_sent.update_yaxes(title_text="Avg Sentiment (%)", tickformat=".0%")
+                fig_brand_sent.update_yaxes(title_text="Avg Sentiment (%)", tickformat=".0%", automargin=True)
                 st.plotly_chart(fig_brand_sent, use_container_width=True)
 
             with col_pie:
