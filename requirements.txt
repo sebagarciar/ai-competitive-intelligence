@@ -1,10 +1,12 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Configuration
 python-dotenv==1.0.0
 
 # NLP / ML
 sentence-transformers==3.3.1
 transformers==4.47.1
-torch==2.5.1
+torch==2.5.1+cpu
 scikit-learn==1.6.0
 pandas==2.2.3
 numpy==1.26.4
