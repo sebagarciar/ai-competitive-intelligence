@@ -13,3 +13,19 @@ jinja2==3.1.5
 plotly>=5.20.0
 fpdf2>=2.7
 mistune==2.0.5
+
+# Embeddings + semantic search (sentence-transformers pulls torch)
+sentence-transformers>=2.7.0
+
+# Ingestion
+requests>=2.32.0
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+trafilatura>=1.12.0
+cloudscraper>=1.2.71
+praw>=7.7.0
+httpx>=0.27.0
+
+# Language detection + translation
+langdetect>=1.0.9
+deep-translator>=1.11.0

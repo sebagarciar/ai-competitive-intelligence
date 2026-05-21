@@ -1,3 +1,15 @@
+---
+title: Luxury Fashion Competitive Intelligence
+emoji: 🖤
+colorFrom: black
+colorTo: gray
+sdk: streamlit
+sdk_version: 1.42.0
+app_file: dashboard/app.py
+pinned: false
+python_version: "3.11"
+---
+
 # AI Competitive Intelligence Copilot — Luxury Fashion
 
 Monitors Chanel, Dior, and Gucci across public sources and produces structured competitive intelligence + weekly strategic briefs. Runs entirely **without a paid LLM API**.
