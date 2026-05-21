@@ -190,16 +190,28 @@ def _search_keywords(brand: str) -> list[dict]:
             print(f"[YouTube] Error searching '{query}': {e}")
             continue
 
-        for item in data.get("items", []):
-            video_id = item["id"]["videoId"]
-            snippet = item["snippet"]
+        raw_items = [
+            (item["id"]["videoId"], item["snippet"])
+            for item in data.get("items", [])
+        ]
+        video_ids = [vid for vid, _ in raw_items]
+        stats = _fetch_video_statistics(video_ids) if video_ids else {}
 
+        for video_id, snippet in raw_items:
             title = snippet.get("title", "")
             description = snippet.get("description", "")
 
             # Verify brand relevance
             if not _detect_brand(f"{title} {description}"):
                 continue
+
+            view_count = stats.get(video_id, {}).get("viewCount", 0)
+            if view_count < MIN_VIEW_THRESHOLD:
+                continue
+
+            likes = stats.get(video_id, {}).get("likeCount", 0)
+            comments = stats.get(video_id, {}).get("commentCount", 0)
+            engagement_prefix = f"[Views: {view_count:,}, Likes: {likes:,}] "
 
             items.append({
                 "competitor": brand,
@@ -208,10 +220,15 @@ def _search_keywords(brand: str) -> list[dict]:
                 "source_url": f"https://www.youtube.com/watch?v={video_id}",
                 "published_at": snippet.get("publishedAt"),
                 "title": title,
-                "excerpt": description[:500],
+                "excerpt": engagement_prefix + description[:500],
                 "raw_text": f"{title}\n\n{description[:2000]}",
                 "original_language": "en",
                 "official_source": False,
+                "engagement_metrics": {
+                    "views": int(view_count),
+                    "likes": int(likes),
+                    "comments": int(comments),
+                },
             })
 
     return items
