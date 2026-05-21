@@ -1129,8 +1129,12 @@ with tab_digest:
     st.markdown('<div class="cc-section-title">Intelligence Digest</div>', unsafe_allow_html=True)
     st.markdown('<div class="cc-section-dek">What happened this week — critical alerts, top competitor moves, and competitive positioning at a glance.</div>', unsafe_allow_html=True)
 
-    # A. Critical Events
+    # A. Critical Events — fall back to top trend so at least 1 card always shows
     df_critical = df_trends[df_trends["is_critical"] == 1].sort_values("trend_score", ascending=False).head(5) if not df_trends.empty else pd.DataFrame()
+    _fallback_mode = False
+    if df_critical.empty and not df_trends.empty:
+        df_critical = df_trends.sort_values("trend_score", ascending=False).head(1)
+        _fallback_mode = True
 
     if not df_critical.empty:
         st.markdown('<div class="cc-section-eyebrow" style="color:#b8463f;">Critical Alerts</div>', unsafe_allow_html=True)
@@ -1147,10 +1151,11 @@ with tab_digest:
             url = str(detail.get("source_url", "") or "")
             date = str(detail.get("published_at", "") or "")[:10]
             title_html = f'<a href="{url}" target="_blank">{art_title}</a>' if url and art_title else art_title
+            card_label = "▲ Top Signal" if _fallback_mode else "▲ Critical Trend"
             st.markdown(f"""
 <div class="cc-critical">
   <div class="cc-critical-body">
-    <div class="label">▲ Critical Trend</div>
+    <div class="label">{card_label}</div>
     <div class="headline"><span class="brand">{_esc(competitor)}</span>{_esc(event_label)}</div>
     {f'<div class="cc-critical-title">{title_html}</div>' if art_title else ''}
     {f'<div class="cc-critical-snippet">{snippet}</div>' if snippet else ''}
