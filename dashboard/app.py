@@ -1113,15 +1113,15 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Tabs ──
-tab_brief, tab_digest, tab_trends, tab_perception, tab_compare, tab_moves, tab_search = st.tabs([
+tab_brief, tab_digest, tab_perception, tab_moves, tab_search = st.tabs([
     "Weekly Brief",
     "Digest",
-    "Trends",
     "Perception",
-    "Compare",
     "Event Feed",
     "Search",
 ])
+tab_trends = None
+tab_compare = None
 
 # ─── Tab 1: Digest ────────────────────────────────────────────
 with tab_digest:
@@ -1390,8 +1390,8 @@ with tab_moves:
                     st.divider()
 
 
-# ─── Tab 3: Trends ───────────────────────────────────────────
-with tab_trends:
+# ─── Tab 3: Trends (hidden for presentation) ─────────────────
+if False:
     st.markdown('<div class="cc-section-eyebrow">Quantitative Desk</div>', unsafe_allow_html=True)
     st.markdown('<div class="cc-section-title">Trends &amp; Signals</div>', unsafe_allow_html=True)
     st.markdown('<div class="cc-section-dek">Burst-detected event types ranked by trend score against the 28-day baseline.</div>', unsafe_allow_html=True)
@@ -1854,8 +1854,8 @@ with tab_perception:
                 st.plotly_chart(fig_ss, use_container_width=True)
 
 
-# ─── Tab 4b: Competitor Comparison ──────────────────────────
-with tab_compare:
+# ─── Tab 4b: Competitor Comparison (hidden for presentation) ──
+if False:
     st.markdown('<div class="cc-section-eyebrow">Head-to-Head</div>', unsafe_allow_html=True)
     st.markdown('<div class="cc-section-title">Competitor Comparison</div>', unsafe_allow_html=True)
     st.markdown('<div class="cc-section-dek">Chanel vs Dior vs Gucci — event mix, activity trends, and key metrics side-by-side.</div>', unsafe_allow_html=True)
