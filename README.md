@@ -16,6 +16,30 @@ An end-to-end pipeline that watches Chanel, Dior, and Gucci across public news, 
 
 Built as an applied AI/ML project: multi-source ingestion → NLP normalization & translation → local sentence embeddings → semantic deduplication → event classification (keyword + zero-shot NLI) → DBSCAN theme clustering → burst-based trend detection → LLM-synthesized brief, all served through a Streamlit dashboard.
 
+![Brand perception dashboard](docs/screenshots/perception.png)
+
+*Perception tab: sentiment quantified across press and social channels, by brand.*
+
+<details>
+<summary>More screenshots</summary>
+
+![Intelligence digest](docs/screenshots/digest.png)
+
+*Digest tab: critical alerts, top competitor moves by impact, and trending signals.*
+
+![Weekly intelligence brief](docs/screenshots/weekly-brief.png)
+
+*Weekly Brief tab: the synthesized editorial brief, exportable to PDF.*
+
+</details>
+
+## Status
+
+The pipeline and dashboard run end to end. Sample data covering 421 events across
+Chanel, Dior and Gucci ships in `data/intelligence.db`, so the dashboard opens with
+content and no API keys. Built as an applied ML project rather than a maintained
+product.
+
 ## Highlights
 
 - **7 ingestion sources** (RSS, brand sites, YouTube, Reddit, Bluesky, X/Grok, Webhose) with graceful degradation — any source missing an API key is skipped, not fatal
