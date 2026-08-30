@@ -339,6 +339,31 @@ html, body, [class*="css"], .stApp, .stMarkdown, .stMarkdown p,
     font-weight: 600 !important;
 }
 
+/* Streamlit renamed the tab node to data-testid="stTab"; the rules above no
+   longer match it, which left inactive tabs near-white on the cream page. */
+.stTabs [data-testid="stTab"],
+.stTabs [data-testid="stTab"] [data-testid="stMarkdownContainer"],
+.stTabs [data-testid="stTab"] p {
+    color: #6b6b6b !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase !important;
+    font-weight: 500 !important;
+}
+.stTabs [data-testid="stTab"]:hover,
+.stTabs [data-testid="stTab"]:hover p {
+    color: #1a1a1a !important;
+}
+.stTabs [data-testid="stTab"][aria-selected="true"],
+.stTabs [data-testid="stTab"][aria-selected="true"] p {
+    color: #1a1a1a !important;
+    font-weight: 600 !important;
+}
+.stTabs [data-testid="stTab"][aria-selected="true"] {
+    border-bottom: 2px solid #c9a96e !important;
+}
+
 /* ---------- News-feed cards (Event/Move) ---------- */
 .cc-feed { margin-top: 0.4rem; }
 .cc-feed-item {
@@ -739,7 +764,7 @@ def load_events(days: int = 30, brands: list = None, event_types: list = None) -
             e.confidence_score, e.cluster_id
         FROM items i
         LEFT JOIN events e ON i.item_id = e.item_id
-        WHERE i.published_at >= datetime('now', ?)
+        WHERE i.published_at >= datetime(COALESCE((SELECT MAX(published_at) FROM items), 'now'), ?)
         ORDER BY i.published_at DESC
     """
     df = pd.read_sql_query(query, conn, params=(f"-{days} days",))
@@ -820,7 +845,7 @@ def load_x_posts(days: int = 30) -> pd.DataFrame:
                sentiment_label, sentiment_score, engagement_metrics
         FROM items
         WHERE source_name LIKE 'X - @%'
-          AND published_at >= datetime('now', ?)
+          AND published_at >= datetime(COALESCE((SELECT MAX(published_at) FROM items), 'now'), ?)
         ORDER BY published_at DESC
     """, conn, params=(f"-{days} days",))
     conn.close()
@@ -1662,7 +1687,7 @@ with tab_perception:
         FROM items
         WHERE source_type = 'video_content'
           AND engagement_metrics IS NOT NULL
-          AND published_at >= datetime('now', ?)
+          AND published_at >= datetime(COALESCE((SELECT MAX(published_at) FROM items), 'now'), ?)
         """,
         yt_conn,
         params=(f"-{days_back} days",),
